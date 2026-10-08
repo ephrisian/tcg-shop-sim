@@ -1,0 +1,33 @@
+Feature Enhancements
+- Locations should be expanded to include multiple areas. The intention is that a player will eventually have TCG Shops all across the fictional Country this is all based in. They begin with just their City which will have 'Uptown', 'Downtown', 'City Center', 'Suburbs', 'SODO', but there should be other locations which are currently locked. These will be Cities like 'Portlandia', 'SeaTown', 'MidWesteria', 'ShyTown', 'AppleShire'.
+
+the various cities will have their own locations and in each location there will be shops. Travel between Cities should have a monetary and energy cost. 
+
+Sealed, Storage, Binder and Shop should all be combined into a single tab called 'Inventory'. 
+
+Sealed is primarily focused on the 'Live Rip Ship'. When a player starts a 'Live' in the game, there should be a 'queue' requesting certain products. The products the 'buyers' can choose from should be based on what the player selects as 'Sellable' in the 'Sealed' screen. The Binder and Storage should also be part of the selection they can choose from.
+
+For example, during a 'Live', a client can request a 'Belle' card or a 'Pikachu' card. The player will then have to open their Storage, pick a 'Drawer' and specify a number range where they believe the card is located. Each search attempt should cost energy with incremental energy costs. For example, searching the entire drawer would cost 12 energy, which searching just 100 cards will cost 2. These values are editable in a 'settings.ini' that should have the various game settings in it for the developers to adjust as needed.
+
+The card request can be somewhat vague or very specific. The Player can choose to 'decline' the request, but too many declined requests will bring down the shops foot traffic.
+
+Binder and Desk should be in their own main section allowing a user to see what they've ripped for themselves and manage their personal collection separately from the items available for sale. This is done by either sending things to a Binder of their choice (multiple Binders can be created) or sending them to a pile which will be put into a Drawer. Each Pile should represent a different drawer within the Storage system.
+
+In the Desk experience, they player should not have to tap the cards each time to flip when they've chosen to take an action on that specific card. The next card should just show up.
+
+Also, the Binder option should let them know how many of that card they already own so they don't collect multiple copies unnecessarily.
+
+The Binder page should show the entire collection of the set they are collecting with a mystery card representing any cards they have not yet obtained. This will incentivize players to collect more by ripping more. To rip, they will need to sell cards from their inventory to generate the necessary funds.
+
+The Data page should also allow for customizing the sets. For example, the player can change the pack art, the booster box art and even select different card sets. For example, right now the app is focused solely on Lorcana, but it needs to support Riftbound, Pokemon, Magic, and even CCG cards from companies like Topps, CardFun, Kakawow and more. 
+
+The source data with the card sets will need to be provided separately as seen in the card_collector.js file. In that file, I was attempting to automate the creatin of these datasets, but ran into issues with companies that don't have APIs for getting the card lists and artwork.
+
+Separate from the game, I need an interface for managing the source data for the card sets. This interface should allow for adding new sets, editing existing sets, and importing data from external sources when available, this should remove the 'Data' page from the main game so the player is just focused on collecting and managing their cards, not on managing the underlying data.
+
+In the Shop section, they player can also choose not to go to other locations, but rather buy 'online'. They can visit various online shops and purchase items, but these will always have a lead time of days. They can choose to expedite the shipments, but it will cost them more.
+
+In the Binder section, the player can take cards from their collection and move them to different Binders of their choosing. The interface for the Binders should show two 3x3 pages on screen and allow the user to drag a card to the slot they want it in. There should be a satifying 'snap' effect when the card is placed into the slot. Additionally, the player should be able to buy new Binders from the various shops, name their binders, empty the Binders, and even Sell them. Binders that have been 'Used' will sell for a lower price than the original purchase price. When empying a binder, the cards will be automatically send to a drawer in the Storage system if the player does not manually move them elsewhere beforehand. Binders will come in various sizes and capacities along with different designs and themes to suit the player's preferences. The types of binders they can purchase will be determined on where they are buying it. Big Box shops will have generic and mass-produced binders, while specialty shops may offer unique and limited-edition designs.
+
+Some card sets may have a 'redemption' that gives the player Binders, or other special cards for their collection, encouraging them to complete specific sets or achieve certain milestones within the game.
+
