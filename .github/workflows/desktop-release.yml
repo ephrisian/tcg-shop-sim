@@ -1,0 +1,39 @@
+name: Build desktop release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tcg-shop-sim/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tcg-shop-sim
+        run: npm ci
+
+      - name: Build Windows desktop app
+        working-directory: tcg-shop-sim
+        run: npm run dist:win
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tcg-shop-sim/release/*.exe
+          generate_release_notes: true

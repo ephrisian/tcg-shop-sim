@@ -30,7 +30,7 @@ Feature outline
   validating records, previewing art, and importing/exporting set data.
 - Integrate provider adapters where APIs exist. For providers without APIs,
   support a documented manual or file-based workflow. Evaluate
-  card_collector.js as prior art, not as a finished editor or backend.
+  card_collector.js as prior prototype, not as a finished editor or backend.
 - Configure pack and booster-box art, card set membership, product contents,
   and set-specific redemption definitions as data rather than screen logic.
 - Choose how set data is stored, versioned, backed up, and delivered to the
@@ -72,7 +72,8 @@ Feature outline
   whether binder cards require explicit opt-in.
 - Generate requests ranging from vague criteria (for example, a character
   or rarity) to a specific card, using the selected sellable stock and
-  supported set data.
+  supported set data if the player has selected the 'Singles' option as
+  the show type. For Breaks or RTYH, those requests do not apply.
 - For card requests, let the player select a drawer and search a card-number
   range. Charge energy based on range size and repeated/narrowing attempts.
   Use the example costs (2 energy per 100 cards; 12 for a whole drawer) only
@@ -87,7 +88,8 @@ Feature outline
 4. World map, neighborhoods, cities, and travel
 -----------------------------------------------
 - Replace the flat store list with a configurable hierarchy of regions,
-  cities, neighborhoods/areas, and shops.
+  cities, neighborhoods/areas, and shops. Locations are not managed by the 
+  player, but rather they are locations created by the developers.
 - Start in one city with Uptown, Downtown, City Center, Suburbs, and SODO.
 - Add Portlandia, SeaTown, MidWesteria, ShyTown, and AppleShire as locked
   cities, with unlock rules to be defined.
@@ -158,19 +160,25 @@ Questions to resolve before implementation
 Scope and sequencing
 --------------------
 - Is personal Collection/Binder a separate main tab, or nested within
-  Inventory?
+  Inventory? Separate tab. The player may select to send a card from their 
+  Collection/Binder to their Storage to make it sellable.
 - Should features ship in increments that leave the current game playable?
-  Which milestone is the first user-facing release?
+  Which milestone is the first user-facing release? All features must be in
+  place to be considered an MVP.
 - Which game/card source is supported first, and what initial set data is
-  available for testing?
+  available for testing? Currently, it is Lorcana via API.
 
 Inventory, storage, and binders
 -------------------------------
 - Are binder cards eligible for live sale/search by default, opt-in per card,
-  or unavailable until removed from a binder?
+  or unavailable until removed from a binder? Players may specify if a Binder 
+  will be included as an option for 'selling'. If they choose to do so, the 
+  entire Binder will be considered an extention of the sellable inventory.
 - Can players create a binder during card movement, or only through shops?
+  Players can not CREATE a binder. They must purchase Binders.
 - What binder capacities, page counts, purchase prices, designs, and used
-  resale formula should apply?
+  resale formula should apply? Capacity should range from 25 pages to 45 pages.
+  Page sizes are 1x1, 2x2, or 3x3. 1x1 binders 
 - What happens after a card search misses: can the player continue searching,
   and does each attempt keep its energy cost?
 - Is a storage pile a temporary desk grouping assigned to a drawer, or a
