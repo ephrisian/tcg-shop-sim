@@ -1,15 +1,38 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { STORE_CARDS, idbGetAllByIndex } from '../game/database';
 import { useGame } from '../game/state';
 import { Eye, X, RefreshCw } from 'lucide-react';
 
+const formatCredits = (value: unknown): string[] => {
+  if (typeof value === 'string' || typeof value === 'number') return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(formatCredits);
+  if (value && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, entry]) => {
+      if (typeof entry === 'string' || typeof entry === 'number') return [`${key}: ${entry}`];
+      return [];
+    });
+  }
+  return [];
+};
+
 export const ScreenSettings = () => {
-  const { refreshData, importSet, availableSets } = useGame();
+  const { refreshData, importSet, importSetPackage, importProductPackaging, availableSets } = useGame();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [viewingSet, setViewingSet] = useState<string | null>(null);
   const [viewingCards, setViewingCards] = useState<any[]>([]);
+  const [packageFile, setPackageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [packagingFile, setPackagingFile] = useState<File | null>(null);
+  const [packagingImages, setPackagingImages] = useState<File[]>([]);
+  const imageFolderInput = useRef<HTMLInputElement>(null);
+  const packagingImageFolderInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    imageFolderInput.current?.setAttribute('webkitdirectory', '');
+    packagingImageFolderInput.current?.setAttribute('webkitdirectory', '');
+  }, []);
 
   const handleRefresh = async () => {
     setLoading(true); setError(""); setSuccess("");
@@ -30,7 +53,39 @@ export const ScreenSettings = () => {
       if (cards.length===0) cards = await idbGetAllByIndex(STORE_CARDS, 'setId', setId.toLowerCase());
       if (cards.length===0) cards = await idbGetAllByIndex(STORE_CARDS, 'setId', setId.toUpperCase());
       setViewingCards(cards);
-    } catch(e) {}
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load cards for this set.');
+    }
+  };
+
+  const handleImportPackage = async () => {
+    if (!packageFile) return;
+    setLoading(true); setError(""); setSuccess("");
+    try {
+      await importSetPackage(packageFile, imageFiles);
+      setSuccess(`Imported set package ${packageFile.name}.`);
+      setPackageFile(null);
+      setImageFiles([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not import set package.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportPackaging = async () => {
+    if (!packagingFile) return;
+    setLoading(true); setError(""); setSuccess("");
+    try {
+      await importProductPackaging(packagingFile, packagingImages);
+      setSuccess(`Updated product packaging from ${packagingFile.name}. Card data, values, and card artwork were not changed.`);
+      setPackagingFile(null);
+      setPackagingImages([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update product packaging.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -38,6 +93,30 @@ export const ScreenSettings = () => {
       <h2 className="text-xl font-bold text-white mb-4">Settings & Data</h2>
       {(error || success) && <div className={`p-3 rounded text-sm font-medium ${error ? 'bg-red-900/50 text-red-200 border border-red-800' : 'bg-green-900/50 text-green-200 border border-green-800'}`}>{error || success}</div>}
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-4 space-y-4 shadow-lg">
+        <div>
+          <h3 className="font-bold text-white mb-1">Import a Set Package</h3>
+          <p className="text-xs text-slate-400 mb-3">Choose the versioned JSON definition and its associated image folder. Imported data stays on this device.</p>
+          <div className="space-y-2">
+            <input type="file" accept="application/json,.json" onChange={event => setPackageFile(event.target.files?.[0] || null)} className="block w-full text-xs text-slate-300" />
+            <input ref={imageFolderInput} type="file" multiple onChange={event => setImageFiles(Array.from(event.target.files || []))} className="block w-full text-xs text-slate-300" />
+            <button onClick={handleImportPackage} disabled={loading || !packageFile} className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white text-sm font-bold py-2 px-4 rounded">Import JSON + Images</button>
+            {imageFiles.length > 0 && <span className="text-xs text-slate-400">{imageFiles.length} image files selected</span>}
+          </div>
+        </div>
+        {import.meta.env.DEV && <>
+          <div className="h-px bg-slate-700"></div>
+          <div>
+            <h3 className="font-bold text-white mb-1">Developer: Update Product Packaging</h3>
+            <p className="text-xs text-slate-400 mb-3">Apply a product-packaging JSON to an already imported set. This updates only pack/box definitions and product images; card data, values, and card artwork remain unchanged.</p>
+            <div className="space-y-2">
+              <input type="file" accept="application/json,.json" onChange={event => setPackagingFile(event.target.files?.[0] || null)} className="block w-full text-xs text-slate-300" />
+              <input ref={packagingImageFolderInput} type="file" multiple onChange={event => setPackagingImages(Array.from(event.target.files || []))} className="block w-full text-xs text-slate-300" />
+              <button onClick={handleImportPackaging} disabled={loading || !packagingFile} className="bg-amber-700 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-bold py-2 px-4 rounded">Update Packaging Only</button>
+              {packagingImages.length > 0 && <span className="text-xs text-slate-400">{packagingImages.length} product image files selected</span>}
+            </div>
+          </div>
+        </>}
+        <div className="h-px bg-slate-700"></div>
         <div>
           <h3 className="font-bold text-white mb-1">Card Database</h3>
           <p className="text-xs text-slate-400 mb-3">Sync sets and definitions from Lorcast API to local IndexedDB.</p>
@@ -52,10 +131,10 @@ export const ScreenSettings = () => {
             <div className="space-y-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
               {availableSets.map(set => (
                 <div key={set.id} className="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-700/50">
-                  <div><div className="text-sm font-bold text-slate-200">{set.code}</div><div className="text-xs text-slate-500 line-clamp-1">{set.name}</div></div>
+                  <div><div className="text-sm font-bold text-slate-200">{set.code}</div><div className="text-xs text-slate-500 line-clamp-1">{set.gameName ? `${set.gameName} · ` : ''}{set.name}</div></div>
                   <div className="flex space-x-2">
-                    <button onClick={() => handleViewSet(set.code)} disabled={loading} className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-[10px] font-bold py-1 px-2 rounded flex items-center"><Eye size={12} className="mr-1" /> View</button>
-                    <button onClick={() => handleImport(set.code)} disabled={loading} className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-[10px] font-bold py-1 px-2 rounded">Import</button>
+                    <button onClick={() => handleViewSet(set.id)} disabled={loading} className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-[10px] font-bold py-1 px-2 rounded flex items-center"><Eye size={12} className="mr-1" /> View</button>
+                    {!set.gameId && <button onClick={() => handleImport(set.code)} disabled={loading} className="bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-[10px] font-bold py-1 px-2 rounded">Import</button>}
                   </div>
                 </div>
               ))}
@@ -67,6 +146,18 @@ export const ScreenSettings = () => {
         <h3 className="font-bold text-red-400 mb-1">Danger Zone</h3>
         <button onClick={() => { if(window.confirm("Are you sure? This cannot be undone.")) { localStorage.removeItem('tcg_sim_save'); window.location.reload(); } }} className="bg-red-700 hover:bg-red-600 text-white text-sm font-bold py-2 px-4 rounded mt-2">Hard Reset Save</button>
       </div>
+      <section className="bg-slate-900 rounded-xl border border-slate-800 p-4">
+        <h3 className="font-bold text-white mb-2">Credits</h3>
+        <div className="space-y-3">
+          {availableSets.flatMap(set => formatCredits(set.credits).map((credit, index) => (
+            <p key={`${set.id}:${index}`} className="text-xs text-slate-400">
+              <span className="text-slate-200">{set.name}</span> · {credit}
+            </p>
+          )))}
+          {!availableSets.some(set => formatCredits(set.credits).length > 0) &&
+            <p className="text-xs text-slate-500">Imported set packages may include source and artwork attribution here.</p>}
+        </div>
+      </section>
       
       {viewingSet && (
         <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col animate-in fade-in slide-in-from-bottom-4 touch-none">

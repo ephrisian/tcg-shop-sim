@@ -1,234 +1,363 @@
-TCG Shop Simulator — Feature Outline
-====================================
+TCG Shop Simulator — Feature Plan
+=================================
 
-Purpose
--------
-This outline organizes proposed functionality by implementation dependency. It
-describes future features, not commitments to a final design. Product and
-balance questions are listed at the end and should be answered before the
-affected feature is implemented.
+Product goal
+------------
+Build a single-player desktop trading-card shop and collection simulator. The
+player starts in a bedroom, opens sealed products, manages personal and
+sellable cards, and runs Live Sales. Over time the player can travel, acquire
+storage, warehouses, and shops, and expand into more card games and collectible
+products.
+
+All phases 1–8 below are required for the MVP. Implement them in dependency
+order, keeping the application runnable at each milestone. Display Walls are
+explicitly post-MVP.
 
 Current baseline
 ----------------
-- The game currently has a single city/store list, sealed-product purchasing
-  and opening, a basic live-show toggle with viewer types, one flat binder
-  collection, storage units, and a player-facing Data page for Lorcast imports.
-- Card collection editing is explored separately in card_collector.js, but
-  there is not yet a shared, production-ready source-data service.
-- The save model stores cards in desk, storage, or one binder collection. New
-  inventory and location features will need an explicit, migrated data model.
+- The game has sealed-product purchasing/opening, a basic Live Rip Ship mode,
+  one flat binder collection, storage units, a single list of stores, and a
+  player-facing Lorcast Data page.
+- The source-data editor is prototyped separately in card_collector.js.
+- Game state is saved in the browser. It has no explicit time system, persistent
+  sales-request queue, multi-container storage model, or save migrations.
 
-Feature outline
-===============
+MVP implementation phases
+=========================
 
-1. Card data platform and independent collection editor
+Phase 1 — Canonical set data, developer tooling, and game configuration
+-----------------------------------------------------------------------
+Build this foundation before expanding products, pack generation, or
+redemptions.
+
+- Define a versioned JSON schema for games/products, sets, cards, stable
+  provider/source IDs, rarity/type, market data, imagery, pack/box art,
+  product contents, print/run sizes, and redemption tables. Preserve
+  provider-specific fields that do not fit the common schema.
+- Support JSON set definitions referencing images in an associated images
+  folder. This JSON-plus-images package is the standard source-data import and
+  exchange format, including for sources that do not provide an API.
+- Build a developer-only set authoring/validation tool. Developers use it to
+  create and edit sets, attach art, define products and pack composition,
+  configure redemption pools, validate the package, and export the set JSON
+  plus required imagery.
+- Sets in the player game are immutable. Players may import supported set
+  packages onto their device, but cannot change set definitions, contents, or
+  art in-game. The current game Data screen is replaced by player-facing
+  import/management only; authoring remains outside the game.
+- Keep imported set data and imagery on the player's device. Support Lorcana
+  through the existing API as the first game/source and the JSON-plus-images
+  format for additional providers.
+- Store developer-only tuning values in settings.ini: action time and energy,
+  travel, shipping, storage/home/business limits, request and penalty formulas,
+  product/economy parameters, redemption odds, and other balance controls.
+  Compile the settings into the game release so players cannot edit the INI at
+  runtime; changing these settings requires a new developer release.
+- Ship the initial settings.ini with provisional values based on the current
+  game settings. Keep tuning data-driven so developers can rebalance values
+  after playtesting and publish the changes in a new release.
+- Let set packages define their own card-data fields and sorting attributes.
+  Keep card_data, value, and image as separate data arrays/sections, keyed by
+  stable card identity rather than relying on array position. For example,
+  Pokemon sorting fields can differ from Lorcana without forcing irrelevant
+  fields into every game's card schema.
+- Add schema versions and validation errors for bad/missing JSON, referenced
+  images, duplicate IDs, invalid product contents, and invalid redemption
+  totals. Keep company/source attribution for the game's Credits.
+
+Acceptance criteria:
+- A developer can author and validate a set package and export JSON plus
+  imagery.
+- The game can import that package locally, retain it after restart, and use
+  it without editing its definitions.
+- The application uses compiled developer settings and reports invalid set
+  packages instead of silently accepting partial data.
+
+Phase 2 — Save migration, time, and inventory ownership
 -------------------------------------------------------
-- Define a canonical schema for games/products, sets, cards, product variants,
-  images/art, pack composition, and special attributes. Preserve original
-  provider data and stable source identifiers.
-- Create a separate source-data editor for adding/editing sets and cards,
-  validating records, previewing art, and importing/exporting set data.
-- Integrate provider adapters where APIs exist. For providers without APIs,
-  support a documented manual or file-based workflow. Evaluate
-  card_collector.js as prior prototype, not as a finished editor or backend.
-- Configure pack and booster-box art, card set membership, product contents,
-  and set-specific redemption definitions as data rather than screen logic.
-- Choose how set data is stored, versioned, backed up, and delivered to the
-  game. Remove source-data management from the player-facing game once an
-  independent editor/replacement workflow is available.
+Complete this before adding actions that transfer cards or consume time.
 
-2. Inventory, storage, and personal collection foundations
-----------------------------------------------------------
-- Consolidate Shop, Sealed, and Storage under an Inventory destination.
-- Keep personal collecting and desk work clearly separated from inventory
-  offered for sale. Decide whether Collection/Binder is its own main tab or a
-  view nested under Inventory.
-- Define card-instance ownership and location (desk, a specific storage
-  drawer, binder, or sellable stock) so moving, selling, searching, or
-  fulfilling an order cannot duplicate or silently lose a card.
-- Support multiple named binders. Binder variants have capacities, page
-  counts, designs, themes, prices, shop availability, and used resale values.
-- Let players buy binders from shops, name them, place/reorder cards, empty
-  them, and sell them. On emptying, cards not moved elsewhere go to storage;
-  define behavior when storage has no room.
-- Show two 3-by-3 binder pages at once. Support drag-to-slot placement with a
-  clear satisfying snap/placement affordance.
-- Show how many copies of a card the player already owns during binder
-  selection. Show the full set checklist, using mystery/hidden cards for
-  cards not yet obtained.
-- Make drawer identity and capacity explicit. Map desk piles to destination
-  drawers and provide clear capacity/overflow behavior.
-- Improve desk actions so after the player acts on a selected card, the next
-  card appears without an extra tap.
-- Support sales from eligible inventory as a way to fund additional sealed
-  purchases.
+- Add a versioned save format and migration from the existing save. Preserve
+  currency, energy, products, desk cards, storage, binder cards, and imported
+  data where possible. Keep a recoverable backup if migration fails.
+- Add in-game Time. Every action advances time according to the developer
+  settings. Energy is restored when the player sleeps, not simply on a daily
+  rollover. The player may stay awake, but each hour awake adds a +1 modifier
+  to energy costs. Sleep has a fixed minimum duration of seven hours; this
+  minimum is not developer-tunable. After more than 36 hours without sleep,
+  force the player to sleep and restore only half energy. This exhaustion
+  state can be reset by sleeping between 10 p.m. and midnight on the day the
+  player wakes. Time does not advance while the game is closed.
+- Represent each card instance exactly once and give it an explicit owner and
+  location: desk, a particular storage container/drawer, a named binder/slot,
+  or sellable inventory. Centralize transfers, capacity checks, sale, and
+  fulfillment so no action duplicates or silently loses a card.
+- Start with the player's bedroom and Live Sales, not a player-owned shop.
+  Bedroom, Garage, Warehouse, and owned-shop storage are progression locations
+  with configurable costs and capacities.
+- Support multiple purchased Storage Containers. Containers have six drawers;
+  configured container sizes range from 300 total cards (50 per drawer) to
+  5,400 (900 per drawer). Set allowed container sizes and the maximum number
+  a player can own through developer settings. Buying a container does not
+  bypass the current location's total storage limit.
+- Associate each desk sorting pile with a drawer in a selected container.
+  Default the destination to the previously selected Storage Container.
+- Enforce desk and storage capacity before ripping/opening sealed product for
+  the player's collection. If no space is available, block the action with a
+  clear explanation and identify valid options (store/sell cards, move cards
+  to a binder, or buy eligible storage). Do not discard cards to make room.
+- When a binder is emptied, route cards to a player-selected or default
+  storage destination. If that destination lacks capacity, require the player
+  to make room or choose another valid destination.
 
-3. Live Rip Ship orders and card search
----------------------------------------
-- Extend the existing live-show toggle/viewer counts into a queue of buyer
-  requests, with statuses, fulfillment, decline, rewards, and session state.
-- Before starting a live, let the player choose sellable sealed products and
-  eligible cards. Decide how stored cards and binder cards are listed and
-  whether binder cards require explicit opt-in.
-- Generate requests ranging from vague criteria (for example, a character
-  or rarity) to a specific card, using the selected sellable stock and
-  supported set data if the player has selected the 'Singles' option as
-  the show type. For Breaks or RTYH, those requests do not apply.
-- For card requests, let the player select a drawer and search a card-number
-  range. Charge energy based on range size and repeated/narrowing attempts.
-  Use the example costs (2 energy per 100 cards; 12 for a whole drawer) only
-  after confirming whether those are desired defaults.
-- Allow a player to fulfill or decline. Track declines and define how they
-  affect foot traffic, reputation, future order volume, and buyer satisfaction.
-- Define fulfillment results: card ownership/location updates, revenue,
-  customer satisfaction, and live metrics.
-- Decide what happens when a search misses, when stock is unavailable, when a
-  live is ended with requests pending, at day end, or after a browser reload.
+Acceptance criteria:
+- Existing saves migrate without losing card instances or player progress.
+- Cards cannot exist in two locations at once, and every transfer enforces
+  capacity.
+- All time advances through a shared action/time mechanism; time remains
+  unchanged while the app is closed.
 
-4. World map, neighborhoods, cities, and travel
------------------------------------------------
-- Replace the flat store list with a configurable hierarchy of regions,
-  cities, neighborhoods/areas, and shops. Locations are not managed by the 
-  player, but rather they are locations created by the developers.
-- Start in one city with Uptown, Downtown, City Center, Suburbs, and SODO.
-- Add Portlandia, SeaTown, MidWesteria, ShyTown, and AppleShire as locked
-  cities, with unlock rules to be defined.
-- Distinguish travel between cities from visiting a neighborhood/shop.
-  Display and charge the appropriate money and energy costs.
-- Associate local stores, stock, products, and binder offerings with their
-  locations. Keep location definitions out of screen components.
-- Establish whether the player initially visits stores only or can eventually
-  own/run shops across the fictional country.
+Phase 3 — Inventory, binders, desk, and collection
+-------------------------------------------------
+- Consolidate Shop, Sealed, and Storage under an Inventory main destination.
+- Keep Desk and personal Collection/Binder as separate main destinations.
+- Permit a player to send a binder card to storage when they want it to become
+  sellable. Moving the card changes its location; it does not make a duplicate.
+- Players cannot create binders. They purchase binders from shops. Support
+  configurable binder designs, prices, resale values, and capacities of 25–45
+  pages, with page layouts of 1x1, 2x2, or 3x3 slots.
+- Allow naming, placing/reordering cards, emptying, and selling purchased
+  binders. Used binders resell below their purchase price, using a formula
+  configurable by developers.
+- Display two 3x3 binder pages at once and support drag-and-drop card
+  placement with a visible snap/placement response. Other binder page layouts
+  use their configured slot count.
+- Show the player's copy count while selecting a card for a binder.
+- Show complete set checklists, with unowned cards represented as mysteries.
+  Completion is based on distinct card identities for that game/set; duplicate
+  copies do not increase unique completion.
+- In Desk, automatically show the next card after an action on the current
+  card. Sorting piles target drawers as described in Phase 2.
+- Selling an eligible card removes that instance from its previous location,
+  applies the profit/economy rules, and adds revenue for future purchases.
 
-5. Online commerce, shipping, and progression
+Acceptance criteria:
+- Inventory, Desk, and personal Collection have distinct navigation and
+  ownership semantics.
+- Binder management supports purchasing and all specified operations without
+  exceeding binder or storage capacity.
+- Collection completion, copy counts, and card movement are correct for
+  duplicate instances.
+
+Phase 4 — Live Rip Ship Singles queue and search minigame
+-------------------------------------------------------
+The existing live-show types remain distinct: Singles has buyer requests for
+cards/products; Breaks and Rip Till You Hit (RTYH) do not use the Singles
+request queue.
+
+- Before starting a Live, let the player select sellable sealed products and
+  whether each Binder is included as sellable inventory. If a Binder is
+  included, the entire Binder is eligible for sale/search. Cards transferred
+  from a Binder to Storage are independently sellable.
+- For Singles, generate buyer requests only from the selected sellable
+  inventory and configured set data. A buyer may request a card by name,
+  character, rarity, set, or combination; requests cannot refer to unrelated
+  products absent from the configured card/set inventory.
+- Base possible request quantity on available inventory and cap the active
+  queue at three requests. There is no per-request timer. The player may close
+  the queue at any time without a penalty. Active requests exist only during
+  their Live Sale and disappear when it ends; do not carry them over to another
+  session or a later day.
+- Let the player fulfill or decline a request. A vague request declined by the
+  player reduces foot traffic less than a specific request. Declining an item
+  that was in the Live's sellable inventory has the greatest negative effect.
+  If the player runs out of energy before clearing the queue, apply a negative
+  foot-traffic effect. Put penalty magnitudes, thresholds, and tuning in
+  settings.ini.
+- Add a drawer-search minigame for Singles card requests. Show the drawer's
+  occupied portion (for example, 450 cards in a 900-card drawer is half full)
+  and an arrow moving over its cards. The player chooses a search difficulty
+  by choosing an energy cost:
+  - High energy: search a broad/full stack, with a wider success zone and
+    slower arrow.
+  - Low energy: player selects the target center/range, with a narrower success
+    zone and faster arrow.
+- Display green hit and red miss regions and let the player time the action.
+  Repeated attempts are allowed, and each attempt charges its selected
+  energy cost. Configure costs, selection scope, timing, speed, success-zone
+  sizes, and difficulty through settings.ini. The prior examples of 2 energy
+  per 100 cards and 12 per full drawer are illustrative only, not fixed values.
+- Requests for sealed products use eligible sealed inventory rather than the
+  drawer-search minigame.
+- A request left pending when the player ends a Live vanishes without a
+  separate end-of-session penalty. A player explicitly declining has the
+  decline consequences above.
+- Live fulfillment is subject to a 15% platform fee. Retrieve card market
+  values via the configured data/API source. Let the player set a sale price;
+  increasing the price is allowed, but a sufficiently large difference from
+  market value reduces buyer satisfaction and foot traffic. Configure the
+  discrepancy and effects in settings.ini.
+
+Acceptance criteria:
+- Breaks/RTYH never create Singles requests; Singles requests only match
+  selected inventory.
+- The queue never exceeds three requests, has no timers, closes without
+  penalty, and is session-scoped.
+- Decline, exhaustion, fulfillment, platform fee, and price-discrepancy
+  outcomes update player funds/traffic exactly once.
+- Search difficulty visibly changes energy cost, selected scope, arrow speed,
+  and success-zone size; every retry is charged.
+
+Phase 5 — World, locations, businesses, and storage progression
+----------------------------------------------------------------
+- Make the location graph developer-defined and configurable: locations are
+  authored by developers, not created or edited by the player. Provide a
+  developer grid creator with Home District at the center; developers can
+  create, edit, and delete locations within a district and optionally
+  auto-populate it with random shops.
+- Begin in the player's bedroom with Live Sales; the player has no shop at
+  game start.
+- Add starting-city areas: Uptown, Downtown, City Center, Suburbs, and SODO.
+  Add locked cities: Portlandia, SeaTown, MidWesteria, ShyTown, and AppleShire.
+- Connect districts on a square grid. Home District is the center; each
+  district can connect to at most four adjacent districts. A non-home district
+  already connected to its parent has at most three remaining adjacent
+  connections. Players unlock new locations by traveling there and choosing
+  Explore.
+- Use grid hops to calculate travel distance. Home to a local store such as
+  Wolf Cards is the starting example of about 5 energy and no money cost.
+  Travel from Home to an adjacent district (for example, Mom's TCG in Uptown)
+  is the starting example of about 10 energy and $5. Travel to a district more
+  than two hops away requires a full in-game day for the round trip. These
+  values and the hop/time thresholds are tunable in settings.ini.
+- Locations contain shops and may contain Warehouses or Shops available for
+  purchase. Buying a shop creates a player-owned business and grants access to
+  that shop's storage capacity for purchased Storage Containers.
+- Use provisional recurring ownership costs of $10 per day for a Garage,
+  $100 per day for a Shop, and $300 per day for a Warehouse. Keep them in
+  settings.ini for balancing.
+- Add travel between cities with both an energy cost and a time cost. Visiting
+  locations/actions also use the shared time/energy rules. Configure unlock
+  conditions, costs, and durations in settings.ini.
+- Connect store stock, products, binder selection, and shop/warehouse
+  availability to the location data. Keep location data out of UI components.
+
+Acceptance criteria:
+- The player starts in a bedroom without a shop and can progress by visiting
+  developer-authored destinations and purchasing eligible properties.
+- Locked destinations remain inaccessible until their configured unlock
+  conditions are met.
+- Travel and actions charge the configured energy and in-game time once.
+
+Phase 6 — Online vendors, orders, and delivery
+----------------------------------------------
+- Add Panazon, NotWhat, and BayBay as online vendors alongside physical
+  shopping.
+- Determine vendor product stock from the total run size of the relevant set.
+- Configure each vendor's warehouse location. Calculate shipping fees from the
+  distance between that warehouse and the player's selected delivery location.
+- Support normal and expedited shipping. Delivery durations are configurable
+  in settings.ini; show the purchase, shipping choice/fee, destination, and
+  expected in-game arrival time. When the player owns multiple locations, let
+  them select the delivery destination when ordering.
+- Allow multiple shipments in transit simultaneously. Deliveries resolve as
+  in-game time reaches their arrival time. Since time does not advance while
+  the app is closed, loading a save after closing does not independently move
+  a shipment past its arrival date.
+- Add arrived product to the selected location's inventory, enforcing that
+  location's capacity. Check capacity at order time; if capacity is no longer
+  available on arrival, retain the shipment as pending at the receiving
+  location until the player makes room or selects another owned destination.
+
+Acceptance criteria:
+- Vendor stock, shipping fees, and delivery dates are deterministic from
+  configured run size, warehouse/destination, service, and in-game time.
+- Multiple shipments persist in save data and resolve once, at the correct
+  time, without losing product due to capacity. A player with multiple owned
+  locations can choose a destination for each order.
+
+Phase 7 — Additional games, sets, and credits
 ---------------------------------------------
-- Add online shops as an alternative to physical visits.
-- Purchases arrive after a configurable number of in-game days. Offer
-  expedited shipping at additional cost and show shipment status/arrival day.
-- Integrate sales revenue, purchasing, shipping, travel, energy, live rewards,
-  and foot traffic into one configurable economy.
-- Define the initial online vendors/products, stock rules, delivery timing,
-  expedited fees, and handling of multiple shipments and save/load.
+- Extend the Phase 1 schema, import pipeline, and product rules to support
+  Lorcana, Riftbound, Pokemon, Magic, and collectible-card products from
+  Topps, Card.Fun, Kakawow, and other configured sources.
+- Start with Lorcana via API. Add other games/providers by importing validated
+  JSON plus imagery; add API adapters when available.
+- Normalize rarity, card type, image, prices, and game-specific fields without
+  dropping source metadata. Scope card identities and completion to their
+  game/provider/set so repeated names or provider IDs cannot collide.
+- Make set-specific art, pack composition, product/set association, print run,
+  and market data configurable by developers, not editable by players.
+- Attribute card companies/sources in the distributed game's Credits.
 
-6. Multi-game and collectible-product support
----------------------------------------------
-- Use the shared schema and import/editor workflow to support Lorcana,
-  Riftbound, Pokemon, Magic, and collectible-card products from Topps,
-  Card.Fun, Kakawow, and additional sources.
-- Normalize provider-specific rarities, card types, IDs, images, prices, and
-  game-specific attributes without losing source metadata.
-- Make product art, product-to-set mapping, and pack contents configurable by
-  game/set. Keep pack-generation rules data-driven.
-- Scope card identity and set completion by game/provider/set so duplicate
-  names or provider IDs do not collide.
-- Prioritize an initial supported game/source and provide test data before
-  broadening import coverage.
+Acceptance criteria:
+- Multiple supported games/providers can be loaded together without
+  collisions, and pack generation uses the correct per-product configuration.
+- Imported data preserves attribution and original provider metadata.
 
-7. Set redemptions and milestone rewards
-----------------------------------------
-- Define set completion/milestone requirements and reward types in set data.
-  Rewards may include binders or special cards.
-- Show eligibility and progress in the relevant set/collection views.
-- Prevent duplicate claims unless a redemption is explicitly repeatable.
-- Add claimed rewards to inventory/collection and support authoring and
-  validation in the separate source-data editor.
+Phase 8 — Case redemptions and prize inventory
+----------------------------------------------
+- Redemptions are possible only when ripping sealed product; do not award
+  them for live Singles requests or ordinary card sales.
+- Configure redemption contents and odds per set in the developer set tool.
+  Support redemption prizes that are cards or binders.
+- Model case/run size and redemption quantities. Normally, one redemption is
+  present per case; allow explicit per-set distribution tables where a set
+  defines tier counts. Example: a 1,000-case run may have 500 Tier 5, 250
+  Tier 4, 150 Tier 3, 75 Tier 2, and 25 Tier 1 prizes.
+- Keep total configured redemption quantities consistent with the set's
+  configured run/case rules. Surface mismatches in authoring validation.
+- Add won prizes to the player's inventory/collection. Redemption cards and
+  binders are sellable and tradable, subject to the same ownership and capacity
+  rules as other items.
+- Export redemption tables and any prize imagery with the set JSON/images
+  package. Redemption frequency/distribution is developer-tunable per set.
 
-Cross-cutting implementation considerations
-===========================================
-- Add versioned save migrations before replacing the current flat binder,
-  storage, and sealed-product structures. Preserve existing saves and provide
-  a recoverable path if migration fails.
-- Keep runtime game and source-data authoring separate, while sharing the
-  canonical schema and validation logic where appropriate.
-- Keep tunable economy values, search-energy formulas, unlock rules, live
-  request generation, product contents, and redemption definitions out of
-  screen components.
-- Resolve browser configuration delivery before adding developer settings:
-  the browser game cannot assume it can read a developer-local settings.ini.
-  Choose a build-time configuration, fetched static file, or editor-managed
-  configuration.
-- Design empty/loading/error/invalid-data states, insufficient funds/energy,
-  no storage capacity, interrupted lives, and failed imports.
-- Add focused tests for save migrations, card movement/ownership invariants,
-  search energy, request resolution, shipping timing, and redemption claims.
-- Retain source attribution, data provenance, and image-use permission
-  information where required.
+Acceptance criteria:
+- Redemption checks occur only on sealed-product rips and use that product's
+  set/run configuration.
+- Each configured prize is awarded according to the set distribution and is
+  represented as a unique sellable/tradable item.
+- Invalid tier totals or case counts block set-package validation.
 
-Questions to resolve before implementation
-==========================================
+Cross-cutting requirements
+==========================
+- Keep game rules and developer-configured values out of presentation
+  components. Use shared services for time, energy, money, location, inventory
+  transfers, market value, requests, shipping, and redemption resolution.
+- Treat settings.ini as a developer source/build input only. It is compiled
+  into releases and cannot be changed by players without a new game release.
+- Validate imported JSON and image references before committing imported data.
+  Preserve local imports across restart and report import failures clearly.
+- Create explicit UI states for no capacity, low energy/funds, missing market
+  data, invalid imports, shipment capacity, no matching stock, missed searches,
+  and empty collections.
+- Test save migration, unique card ownership, container/binder limits, sleep
+  and exhaustion rules, time advancement, search costs/results, Singles
+  request eligibility, price/fee calculations, grid travel/exploration,
+  shipments, and redemption distributions.
 
-Scope and sequencing
---------------------
-- Is personal Collection/Binder a separate main tab, or nested within
-  Inventory? Separate tab. The player may select to send a card from their 
-  Collection/Binder to their Storage to make it sellable.
-- Should features ship in increments that leave the current game playable?
-  Which milestone is the first user-facing release? All features must be in
-  place to be considered an MVP.
-- Which game/card source is supported first, and what initial set data is
-  available for testing? Currently, it is Lorcana via API.
+Post-MVP — Display Walls and decoration
+=======================================
+Do not block MVP on Display Walls. After MVP, add a personal display area at
+each player-owned location:
 
-Inventory, storage, and binders
--------------------------------
-- Are binder cards eligible for live sale/search by default, opt-in per card,
-  or unavailable until removed from a binder? Players may specify if a Binder 
-  will be included as an option for 'selling'. If they choose to do so, the 
-  entire Binder will be considered an extention of the sellable inventory.
-- Can players create a binder during card movement, or only through shops?
-  Players can not CREATE a binder. They must purchase Binders.
-- What binder capacities, page counts, purchase prices, designs, and used
-  resale formula should apply? Capacity should range from 25 pages to 45 pages.
-  Page sizes are 1x1, 2x2, or 3x3. 1x1 binders 
-- What happens after a card search misses: can the player continue searching,
-  and does each attempt keep its energy cost?
-- Is a storage pile a temporary desk grouping assigned to a drawer, or a
-  persistent named group within storage?
-- What happens when emptying a binder or sorting desk cards would exceed
-  available storage capacity?
+- Start with an empty bedroom wall marked "Display Wall". Wall size depends on
+  the location: bedroom supports one large bookcase, two medium, or four small;
+  Garage and Warehouse capacities are larger, with Warehouse supporting up to
+  eight large bookcases.
+- Let players buy bookcases, shelves, display cases, card frames, posters, and
+  other personalization furniture. Binders need a shelf/bookcase.
+- Provide a furniture inventory and drag/drop placement UI.
+- Allow placing an empty frame first, then assigning a card later by moving it
+  from sellable or personal storage. Displayed cards must have one owner and
+  cannot simultaneously be sold or used to fulfill a request.
 
-Live orders and economy
------------------------
-- What may a buyer request (card name, character, rarity, set, sealed
-  product, or combinations), and how vague can a request be?
-- How are order quantity, queue length, order timers, prices/rewards, and
-  buyer satisfaction determined?
-- What counts as "too many" declines, over what time window, and how large
-  is the foot-traffic penalty and recovery?
-- Do active requests persist across reloads, continue while away, or pause/end
-  at day end?
-- Is live fulfillment paid at a fixed order price, market value, negotiated
-  value, or another formula?
-
-Search and balance
-------------------
-- Is energy charged once per chosen range, per search attempt, or cumulatively
-  as the player narrows a search? How do repeated/overlapping ranges work?
-- Are the example costs (2 energy per 100 cards and 12 per full drawer) exact
-  defaults or illustrative starting points?
-- Is storage position stable and searchable, or does the game abstract the
-  physical position of cards when drawers are sorted?
-
-World and online commerce
--------------------------
-- What are unlock conditions and travel costs for the named cities and
-  neighborhoods? Does travel cost in-game time/day in addition to energy and
-  money?
-- Can the player own shops in multiple cities, or only visit them initially?
-- Which online vendors/products are in scope? How are stock, normal/expedited
-  delivery durations, and shipping fees determined?
-- Can multiple shipments be in transit together? What happens if a save is
-  loaded after a shipment's arrival day?
-
-Data, configuration, and redemptions
-------------------------------------
-- Should developer-tunable settings use static JSON, a build-time .ini, or an
-  editor that exports configuration? Who can change production values?
-- Where will source set data live (bundled files, user imports, remote
-  hosting, or a combination), and which import formats are required?
-- For providers without APIs, is manual entry enough, or are spreadsheet/CSV
-  and image-folder imports also needed?
-- What source attribution, image-use permissions, and provenance must be
-  recorded?
-- Are pack/box art and set contents chosen by the editor, the player, or both?
-- Which redemption conditions/rewards are needed first? Can redemptions be
-  repeated, traded, or sold?
+Resolved details and tuning policy
+==================================
+The answers previously listed here have been incorporated into the phases
+above. Implement the specified sleep rules, data shape, delivery destination,
+district grid/exploration model, and provisional recurring property costs as
+written. Exact balance values remain developer tuning tasks: begin with
+provisional values based on current game settings, keep them in settings.ini,
+and refine through playtesting.

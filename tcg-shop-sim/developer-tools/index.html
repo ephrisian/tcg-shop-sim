@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set Package Author (developer tool)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; background: #14181f; color: #e6e9ef; }
+  header { padding: 10px 16px; background: #1d2430; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; }
+  nav { display: flex; gap: 4px; padding: 8px 16px 0; flex-wrap: wrap; }
+  nav[hidden] { display: none; }
+  nav button.active { background: #3b82f6; }
+  main { padding: 12px 16px 40px; }
+  button { background: #2c3544; color: inherit; border: 1px solid #3a4558; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  button:hover { background: #38445a; }
+  input, select, textarea { background: #0e1218; color: inherit; border: 1px solid #3a4558; border-radius: 4px; padding: 3px 5px; font: inherit; box-sizing: border-box; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid #2a3240; padding: 3px; text-align: left; vertical-align: top; }
+  th { font-weight: 600; color: #9fb0c8; }
+  td input, td select, td textarea { width: 100%; min-width: 70px; }
+  td textarea { min-height: 52px; font-family: ui-monospace, monospace; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: max-content minmax(220px, 420px); gap: 6px 10px; align-items: center; }
+  .package-list { display: grid; gap: 10px; max-width: 900px; margin-top: 18px; }
+  .package-card { display: flex; gap: 16px; justify-content: space-between; align-items: center; padding: 14px; background: #1d2430; border: 1px solid #2a3240; border-radius: 8px; }
+  .package-details { display: grid; gap: 4px; }
+  .package-details span, .package-details small { color: #9fb0c8; }
+  .package-details small { font-family: ui-monospace, monospace; }
+  .hint { color: #8b98ad; font-size: 12px; margin: 4px 0 10px; }
+  #status { margin-left: auto; font-size: 12px; }
+  .err { color: #ff8a8a; } .warn { color: #f5c26b; } .ok { color: #7ee2a0; }
+  textarea.big { width: 100%; height: 300px; font-family: ui-monospace, monospace; font-size: 12px; }
+  h2 { font-size: 15px; margin: 14px 0 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Set Package Author</h1>
+  <button id="btnNew">New</button>
+  <button id="btnNewPackaging">New Packaging Config</button>
+  <button id="btnDataImporter">Data Importer</button>
+  <button id="btnSetLibrary">Set Library</button>
+  <button id="btnLoad">Load JSON�</button>
+  <input id="fileIn" type="file" accept=".json,application/json" hidden>
+  <button id="btnExport">Export set.json</button>
+  <button id="btnSavePackage" hidden>Save to set-packages</button>
+  <span id="status"></span>
+</header>
+<nav id="tabs"></nav>
+<main id="view"></main>
+<script src="set-package-validation.js?v=20261008-1"></script>
+<script src="authoring-tool.js?v=20261008-9"></script>
+</body>
+</html>

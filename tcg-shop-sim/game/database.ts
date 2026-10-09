@@ -34,6 +34,50 @@ export const idbPutAll = async (storeName: string, items: any[]): Promise<void> 
   });
 };
 
+export const idbPutSetPackage = async (set: { id: string }, cards: { id: string }[]): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_SETS, STORE_CARDS], 'readwrite');
+    const setStore = tx.objectStore(STORE_SETS);
+    const existingRequest = setStore.get(set.id);
+    let immutableSetError: Error | null = null;
+    existingRequest.onsuccess = () => {
+      if (existingRequest.result) {
+        immutableSetError = new Error('This set package has already been imported; set definitions are immutable.');
+        tx.abort();
+        return;
+      }
+      setStore.add(set);
+      const cardStore = tx.objectStore(STORE_CARDS);
+      cards.forEach(card => cardStore.put(card));
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(immutableSetError || tx.error || new Error('Set package import was cancelled.'));
+  });
+};
+
+export const idbUpdateSetProducts = async (setId: string, products: unknown[]): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_SETS, 'readwrite');
+    const store = tx.objectStore(STORE_SETS);
+    const request = store.get(setId);
+    let updateError: Error | null = null;
+    request.onsuccess = () => {
+      if (!request.result) {
+        updateError = new Error(`Cannot update packaging: set "${setId}" is no longer available.`);
+        tx.abort();
+        return;
+      }
+      store.put({ ...request.result, products });
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(updateError || tx.error || new Error('Packaging update was cancelled.'));
+  });
+};
+
 export const idbGetAllByIndex = async (storeName: string, indexName: string, value: string): Promise<any[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {

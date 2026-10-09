@@ -1,2 +1,4 @@
 node_modules/
 dist/
+public/compiled-set-packages/
+release/

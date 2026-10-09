@@ -1,8 +1,9 @@
 # TCG Shop Simulator
 
-A browser-based trading-card shop simulator built with React, TypeScript, Vite,
-and Tailwind CSS. Manage a shop, buy and open sealed products, sort cards, build
-a collection, visit local stores, and run live rip shows.
+A trading-card shop and collection simulator built with React, TypeScript, Vite,
+and Tailwind CSS. Begin with Live Sales in a bedroom, then explore districts,
+buy property and storage, open sealed products, organize cards, run Singles
+sales, and order products from online vendors.
 
 ## Run locally
 
@@ -54,8 +55,27 @@ Run these from `tcg-shop-sim`:
 | `npm.cmd run typecheck` | Check TypeScript without producing output. |
 | `npm.cmd run build` | Type-check and create a production build in `dist/`. |
 | `npm.cmd run preview` | Serve the production build locally after building. |
+| `npm.cmd test` | Run gameplay-rule, set-package, and developer-tool tests. |
+| `npm.cmd run validate:set -- <package.json> [image-folder]` | Validate a set package. |
+| `npm.cmd run export:set -- <package.json> <output-folder> [image-folder]` | Export a validated package and referenced images. |
+| `npm.cmd run world:grid -- <command> <world.json> [options]` | Create, validate, and export district-grid data. |
 | `npm.cmd run desktop:dev` | Build the web app and open it in Electron. |
 | `npm.cmd run dist:win` | Build the web app and package portable/installer Windows apps. |
+
+## Developer authoring tools
+
+- Open [`tcg-shop-sim/developer-tools/index.html`](./tcg-shop-sim/developer-tools/index.html)
+  in Chrome or Edge to import Lorcast sets with the **Data Importer**, download
+  their card data/artwork, and save build-ready packages under
+  `tcg-shop-sim/developer-tools/set-packages/`. Use **New Packaging Config** to
+  adjust pack/box definitions and product artwork without modifying card data,
+  values, or card artwork. The player-facing release does not expose set import
+  or data-management controls. Development and production builds validate and
+  compile source packages into the app. See the
+  [set authoring guide](./tcg-shop-sim/developer-tools/README.md).
+- Use `npm.cmd run world:grid -- init world.json` to create a world definition,
+  then use the documented district/location commands to edit, validate, and
+  export it. See the [world grid guide](./tcg-shop-sim/docs/world-grid-tool.md).
 
 ## Project structure
 
@@ -82,18 +102,33 @@ the app.
 
 - Game progress is saved in browser `localStorage` under `tcg_sim_save`.
 - Card and set records are stored in IndexedDB (`TCG_Sim_DB`).
-- The Settings screen can fetch set information and import cards from the
-  Lorcast API. Imported data is stored in the current browser.
+- Developer tuning is authored in `tcg-shop-sim/settings.ini` and compiled
+  into the build. Players cannot rebalance a shipped game by editing that file.
+- Developers add immutable set/card data to the source package folder before
+  building. The build includes package JSON and referenced images; the app
+  installs these catalogs locally at startup. Rebuild and redistribute the app
+  to ship catalog changes. Existing card records remain immutable, while
+  compiled updates may refresh product definitions and packaging artwork.
+- Developer builds include a Dev Data screen for importing/testing catalogs;
+  this screen is absent from production navigation.
 - Browser data is local to that browser/profile. Clearing site data removes
   the local save and imported card database, so back up data before clearing
   browser storage.
 
-## Current scope and roadmap
+## Implemented gameplay systems
 
-The game currently focuses on the shop-management and card-opening loop. The
-planned feature outline—including multi-city travel, expanded inventory and
-binders, live buyer requests, online ordering, broader game support, and set
-redemptions—is in [plans.txt](./plans.txt).
+- Versioned saves with legacy migration, game time, sleep, and exhaustion.
+- Product-aware set-package import, validation/export tooling, local images,
+  and compiled developer tuning from `settings.ini`.
+- Inventory, desk, storage drawers, separate Collection and Binders screens,
+  and set completion/copy counts across cards held in binders.
+- Singles Live Sales with session-bound requests, drawer-search difficulty,
+  product fulfillment, sale pricing, platform fees, and traffic effects.
+- Developer-defined district travel, exploration, properties, online vendors,
+  pending shipments, and sealed-product redemption prizes.
+
+The approved MVP outline and acceptance criteria remain in [plans.txt](./plans.txt).
+Display Walls are explicitly post-MVP.
 
 `card_collector.js` is a separate card-data collection/editor prototype, not
 part of the Vite game runtime.

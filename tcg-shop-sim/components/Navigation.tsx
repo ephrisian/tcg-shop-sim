@@ -1,17 +1,18 @@
 import React from 'react';
 import { GAME_CONFIG } from '../game/config';
 import { useGame } from '../game/state';
-import { Home as HomeIcon, Map as MapIcon, Archive, PackageOpen, Layers, Settings as SettingsIcon, Sun, Zap, Coffee, BookOpen } from 'lucide-react';
+import { gameTimeOfDay } from '../game/time';
+import { Map as MapIcon, Archive, Boxes, PackageOpen, Sun, Zap, Coffee, BookOpen, Library } from 'lucide-react';
 
 export const Navigation = ({ current, setCurrent }: { current: string, setCurrent: (s: string) => void }) => (
-  <nav className="fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-50">
-    <NavBtn icon={<HomeIcon />} label="Shop" active={current === 'home'} onClick={() => setCurrent('home')} />
+  <nav className={`app-nav fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-50 ${import.meta.env.DEV ? 'app-nav-dev' : ''}`}>
+    <NavBtn icon={<PackageOpen />} label="Inventory" active={current === 'inventory'} onClick={() => setCurrent('inventory')} />
     <NavBtn icon={<MapIcon />} label="City" active={current === 'city'} onClick={() => setCurrent('city')} />
-    <NavBtn icon={<PackageOpen />} label="Sealed" active={current === 'sealed'} onClick={() => setCurrent('sealed')} />
     <NavBtn icon={<Archive />} label="Desk" active={current === 'desk'} onClick={() => setCurrent('desk')} />
-    <NavBtn icon={<Layers />} label="Storage" active={current === 'storage'} onClick={() => setCurrent('storage')} />
-    <NavBtn icon={<BookOpen />} label="Binder" active={current === 'collection'} onClick={() => setCurrent('collection')} />
-    <NavBtn icon={<SettingsIcon />} label="Data" active={current === 'settings'} onClick={() => setCurrent('settings')} />
+    <NavBtn icon={<Boxes />} label="Storage" active={current === 'storage'} onClick={() => setCurrent('storage')} />
+    <NavBtn icon={<BookOpen />} label="Collection" active={current === 'collection'} onClick={() => setCurrent('collection')} />
+    <NavBtn icon={<Library />} label="Binders" active={current === 'binders'} onClick={() => setCurrent('binders')} />
+    {import.meta.env.DEV && <NavBtn icon={<Library />} label="Dev Data" active={current === 'settings'} onClick={() => setCurrent('settings')} />}
   </nav>
 );
 
@@ -24,6 +25,7 @@ export const NavBtn = ({ icon, label, active, onClick }: any) => (
 
 export const TopBar = () => {
   const { state, setState } = useGame();
+  const clockTime = gameTimeOfDay(state.clockMinutes);
   
   const drinkEnergy = () => {
     if (state.energyDrinks <= 0) return;
@@ -40,6 +42,10 @@ export const TopBar = () => {
         <div className="flex items-center space-x-1">
           <Sun size={18} className="text-yellow-500" />
           <span className="text-white font-bold text-sm">Day {state.day}</span>
+          <span className="text-slate-400 text-xs font-mono">
+            {String(clockTime.hour).padStart(2, '0')}:{String(clockTime.minute).padStart(2, '0')}
+          </span>
+          {state.exhausted && <span className="text-red-400 text-xs font-bold">Exhausted</span>}
         </div>
         <div className="bg-slate-800 px-3 py-1 rounded-full flex items-center shadow-inner relative group cursor-pointer hover:bg-slate-700 transition-colors" onClick={drinkEnergy}>
           <Zap size={14} className="text-yellow-400 mr-1" />

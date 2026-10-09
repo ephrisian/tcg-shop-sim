@@ -1,3 +1,7 @@
+import { DEVELOPER_SETTINGS } from './generatedSettings';
+
+export { DEVELOPER_SETTINGS };
+
 // --- UTILS ---
 export const normalizeRarity = (r: string) => {
   if (!r) return 'Common';
@@ -7,17 +11,17 @@ export const normalizeRarity = (r: string) => {
 // --- CONFIGURATION ---
 export const GAME_CONFIG = {
   startingState: {
-    currency: 500.00,
+    currency: DEVELOPER_SETTINGS.game.starting_currency,
     sealedProduct: [
       { type: 'box', setId: '1', quantity: 2 },
       { type: 'pack', setId: '1', quantity: 5 }
     ],
-    storageUnits: ['basic-8-drawer'],
+    storageUnits: ['basic-300'],
   },
   economy: {
     retailPrices: {
-      pack: 5.99,
-      box: 143.76, 
+      pack: DEVELOPER_SETTINGS.products.default_pack_price,
+      box: DEVELOPER_SETTINGS.products.default_box_price,
     },
     storagePrices: {
       'basic-8-drawer': 50.00,
@@ -25,27 +29,37 @@ export const GAME_CONFIG = {
     }
   },
   energy: {
-    baseMax: 100,
+    baseMax: DEVELOPER_SETTINGS.energy.max_energy,
     costs: {
-      ripPack: 5,
-      liveRipPack: 1,
-      sortCard: 1,
-      visitStore: 5,
-      disneyTrip: 40,
-      openBox: 2
+      ripPack: DEVELOPER_SETTINGS.energy.pack_rip_cost,
+      liveRipPack: DEVELOPER_SETTINGS.energy.live_pack_rip_cost,
+      sortCard: DEVELOPER_SETTINGS.energy.card_sort_cost,
+      visitStore: DEVELOPER_SETTINGS.energy.store_visit_cost,
+      disneyTrip: DEVELOPER_SETTINGS.energy.disney_trip_cost,
+      openBox: DEVELOPER_SETTINGS.energy.box_open_cost
     },
     supplies: {
-      energyDrink: { price: 10.00, restores: 50, repGain: 5 }
+      energyDrink: {
+        price: DEVELOPER_SETTINGS.economy.energy_drink_price,
+        restores: DEVELOPER_SETTINGS.energy.energy_drink_restore,
+        repGain: DEVELOPER_SETTINGS.energy.energy_drink_reputation,
+      }
     }
   },
   businessUpgrades: {
-    worker: { cost: 1500, maxEnergyBoost: 100, marginPenalty: 0.10, name: "Hire Worker", desc: "Adds 100 Max Energy. Takes 10% of gross profits." }
+    worker: {
+      cost: DEVELOPER_SETTINGS.business.worker_hire_cost,
+      maxEnergyBoost: DEVELOPER_SETTINGS.business.worker_energy_boost,
+      marginPenalty: DEVELOPER_SETTINGS.business.worker_margin_penalty,
+      name: "Hire Worker",
+      desc: `Adds ${DEVELOPER_SETTINGS.business.worker_energy_boost} Max Energy. Takes ${Math.round(DEVELOPER_SETTINGS.business.worker_margin_penalty * 100)}% of gross profits.`,
+    }
   },
   liveShows: {
     types: {
-      'standard': { name: 'Standard Rip', cost: 10, whaleAttraction: 1.5, frugalAttraction: 1.0, desc: "Balanced viewership." },
-      'singles': { name: 'Singles Show', cost: 5, whaleAttraction: 0.8, frugalAttraction: 2.5, desc: "Attracts deal-hunters." },
-      'rtyh': { name: 'Rip Till You Hit', cost: 15, whaleAttraction: 2.5, frugalAttraction: 1.2, desc: "Attracts high-rollers." }
+      'standard': { name: 'Standard Rip', cost: DEVELOPER_SETTINGS.live.standard_show_energy, whaleAttraction: 1.5, frugalAttraction: 1.0, desc: "Balanced viewership." },
+      'singles': { name: 'Singles Show', cost: DEVELOPER_SETTINGS.live.singles_show_energy, whaleAttraction: 0.8, frugalAttraction: 2.5, desc: "Attracts deal-hunters." },
+      'rtyh': { name: 'Rip Till You Hit', cost: DEVELOPER_SETTINGS.live.rtyh_show_energy, whaleAttraction: 2.5, frugalAttraction: 1.2, desc: "Attracts high-rollers." }
     }
   },
   grading: {
@@ -66,6 +80,7 @@ export const GAME_CONFIG = {
   locations: {
     'lgs-wolf': { 
       id: 'lgs-wolf', name: 'Wolf Cards', type: 'lgs', 
+      districtId: 'home',
       baseMarkup: 0.20, 
       allocationCases: 15, 
       affiliateTiers: [
@@ -77,6 +92,7 @@ export const GAME_CONFIG = {
     },
     'lgs-dragon': { 
       id: 'lgs-dragon', name: "Dragon's Lair", type: 'lgs', 
+      districtId: 'home',
       baseMarkup: 0.15,
       allocationCases: 50, 
       affiliateTiers: [
@@ -87,16 +103,52 @@ export const GAME_CONFIG = {
     },
     'bb-tarj': { 
       id: 'bb-tarj', name: 'TarJ', type: 'bigbox', 
+      districtId: 'city-center',
       unlockDay: 8, baseMarkup: 0 
     },
     'bb-wally': { 
       id: 'bb-wally', name: 'WallyMart', type: 'bigbox', 
+      districtId: 'uptown',
       unlockDay: 8, baseMarkup: 0 
     },
     'resort-disney': {
       id: 'resort-disney', name: 'Disney Resort', type: 'resort',
+      districtId: 'apple-shire',
       entryFee: 1000, baseMarkup: 0
     }
+  },
+  worldMap: {
+    districts: [
+      { id: 'home', name: 'Home District', cityId: 'home-city', x: 0, y: 0, availableProperties: ['garage'] as const },
+      { id: 'uptown', name: 'Uptown', cityId: 'home-city', x: 1, y: 0, availableProperties: ['shop'] as const },
+      { id: 'downtown', name: 'Downtown', cityId: 'home-city', x: -1, y: 0, availableProperties: ['shop'] as const },
+      { id: 'city-center', name: 'City Center', cityId: 'home-city', x: 0, y: 1, availableProperties: ['shop', 'warehouse'] as const },
+      { id: 'suburbs', name: 'Suburbs', cityId: 'home-city', x: 0, y: -1, availableProperties: ['garage', 'warehouse'] as const },
+      { id: 'sodo', name: 'SODO', cityId: 'home-city', x: -1, y: -1, availableProperties: ['shop', 'warehouse'] as const },
+      { id: 'portlandia', name: 'Portlandia', cityId: 'portlandia', x: 0, y: 0, availableProperties: ['shop'] as const },
+      { id: 'seatown', name: 'SeaTown', cityId: 'seatown', x: 0, y: 0, availableProperties: ['shop', 'warehouse'] as const },
+      { id: 'midwesteria', name: 'MidWesteria', cityId: 'midwesteria', x: 0, y: 0, availableProperties: ['warehouse'] as const },
+      { id: 'shytown', name: 'ShyTown', cityId: 'shytown', x: 0, y: 0, availableProperties: ['shop'] as const },
+      { id: 'apple-shire', name: 'AppleShire', cityId: 'apple-shire', x: 0, y: 0, availableProperties: ['warehouse'] as const },
+    ],
+    cities: [
+      { id: 'home-city', name: 'Starting City', unlocked: true },
+      { id: 'portlandia', name: 'Portlandia', unlockExplorations: 4, travelHops: 3 },
+      { id: 'seatown', name: 'SeaTown', unlockExplorations: 6, travelHops: 4 },
+      { id: 'midwesteria', name: 'MidWesteria', unlockExplorations: 8, travelHops: 5 },
+      { id: 'shytown', name: 'ShyTown', unlockExplorations: 10, travelHops: 6 },
+      { id: 'apple-shire', name: 'AppleShire', unlockExplorations: 12, travelHops: 7 },
+    ],
+  },
+  onlineVendors: [
+    { id: 'panazon', name: 'Panazon', warehouseDistrictId: 'home' },
+    { id: 'notwhat', name: 'NotWhat', warehouseDistrictId: 'uptown' },
+    { id: 'baybay', name: 'BayBay', warehouseDistrictId: 'downtown' },
+  ],
+  propertyDefs: {
+    garage: { name: 'Garage', purchaseCost: DEVELOPER_SETTINGS.business.garage_purchase_cost, dailyCost: DEVELOPER_SETTINGS.business.garage_daily_cost },
+    shop: { name: 'Shop', purchaseCost: DEVELOPER_SETTINGS.business.shop_purchase_cost, dailyCost: DEVELOPER_SETTINGS.business.shop_daily_cost },
+    warehouse: { name: 'Warehouse', purchaseCost: DEVELOPER_SETTINGS.business.warehouse_purchase_cost, dailyCost: DEVELOPER_SETTINGS.business.warehouse_daily_cost },
   },
   reputation: {
     basePointsPerRarity: {
@@ -106,8 +158,8 @@ export const GAME_CONFIG = {
     diminishingReturnsCurve: [1.0, 0.8, 0.5, 0.2, 0.05, 0.0] 
   },
   packConfiguration: {
-    cardsPerPack: 12,
-    packsPerBox: 24,
+    cardsPerPack: DEVELOPER_SETTINGS.products.default_cards_per_pack,
+    packsPerBox: DEVELOPER_SETTINGS.products.default_packs_per_box,
     slots: [
       { rarity: ['Common'], count: 6 },
       { rarity: ['Uncommon'], count: 3 },
@@ -119,17 +171,31 @@ export const GAME_CONFIG = {
     }
   },
   world: {
-    deskCapacity: 50,
-    deskDecayRate: 0.05, 
+    deskCapacity: DEVELOPER_SETTINGS.storage.desk_capacity,
+    deskDecayRate: DEVELOPER_SETTINGS.world.desk_card_decay_rate,
     printRunBase: {
-      'Common': 100000, 'Uncommon': 50000, 'Rare': 25000,
-      'Super Rare': 10000, 'Legendary': 2500, 'Enchanted': 500,
+      'Common': DEVELOPER_SETTINGS.world.common_print_run_base,
+      'Uncommon': DEVELOPER_SETTINGS.world.uncommon_print_run_base,
+      'Rare': DEVELOPER_SETTINGS.world.rare_print_run_base,
+      'Super Rare': DEVELOPER_SETTINGS.world.super_rare_print_run_base,
+      'Legendary': DEVELOPER_SETTINGS.world.legendary_print_run_base,
+      'Enchanted': DEVELOPER_SETTINGS.world.enchanted_print_run_base,
     },
-    npcDailyRipVolumeBase: 500, 
+    npcDailyRipVolumeBase: DEVELOPER_SETTINGS.world.npc_daily_rip_volume_base,
   },
   storageDefs: {
-    'basic-8-drawer': { name: 'Basic Storage', capacityPerSlot: 600, slots: 8, type: 'drawer' },
-    'pro-5000-count': { name: 'Pro 5k Box', capacityPerSlot: 1250, slots: 4, type: 'row' }
+    'basic-300': { name: 'Bedroom Storage', capacityPerSlot: DEVELOPER_SETTINGS.storage.bedroom_cards_per_drawer, slots: DEVELOPER_SETTINGS.storage.container_drawers, type: 'drawer', price: 0 },
+    'compact-600': { name: 'Compact Container', capacityPerSlot: DEVELOPER_SETTINGS.storage.compact_cards_per_drawer, slots: DEVELOPER_SETTINGS.storage.container_drawers, type: 'drawer', price: DEVELOPER_SETTINGS.storage.compact_container_price },
+    'standard-1800': { name: 'Standard Container', capacityPerSlot: DEVELOPER_SETTINGS.storage.standard_cards_per_drawer, slots: DEVELOPER_SETTINGS.storage.container_drawers, type: 'drawer', price: DEVELOPER_SETTINGS.storage.standard_container_price },
+    'large-3600': { name: 'Large Container', capacityPerSlot: DEVELOPER_SETTINGS.storage.large_cards_per_drawer, slots: DEVELOPER_SETTINGS.storage.container_drawers, type: 'drawer', price: DEVELOPER_SETTINGS.storage.large_container_price },
+    'warehouse-5400': { name: 'Warehouse Container', capacityPerSlot: DEVELOPER_SETTINGS.storage.warehouse_cards_per_drawer, slots: DEVELOPER_SETTINGS.storage.container_drawers, type: 'drawer', price: DEVELOPER_SETTINGS.storage.warehouse_container_price }
+  },
+  binders: {
+    designs: [
+      { id: 'classic-25', name: 'Classic', pages: 25, slotsPerPage: 9 as const, price: DEVELOPER_SETTINGS.binders.classic_25_price, resaleFraction: DEVELOPER_SETTINGS.binders.classic_25_resale_fraction },
+      { id: 'portfolio-35', name: 'Portfolio', pages: 35, slotsPerPage: 4 as const, price: DEVELOPER_SETTINGS.binders.portfolio_35_price, resaleFraction: DEVELOPER_SETTINGS.binders.portfolio_35_resale_fraction },
+      { id: 'showcase-45', name: 'Showcase', pages: 45, slotsPerPage: 1 as const, price: DEVELOPER_SETTINGS.binders.showcase_45_price, resaleFraction: DEVELOPER_SETTINGS.binders.showcase_45_resale_fraction }
+    ]
   }
 };
 

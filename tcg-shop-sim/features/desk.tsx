@@ -1,73 +1,76 @@
 import React, { useState } from 'react';
-import { GAME_CONFIG } from '../game/config';
+import { DEVELOPER_SETTINGS, GAME_CONFIG } from '../game/config';
 import type { CardData, CardInstance, DeskCard } from '../game/types';
 import { useGame } from '../game/state';
+import { storeDeskPiles } from '../game/inventory';
 import { getCalculatedCardValue } from '../game/engine';
 import { Archive, Trash2, X, HeartHandshake, Zap, DollarSign, BookOpen, ShieldCheck } from 'lucide-react';
 
 export const ScreenDesk = () => {
-  const { state, setState, dictionary, consumeEnergy } = useGame();
+  const { state, setState, dictionary, consumeEnergy, advanceTime } = useGame();
   
   const drawPile = state.desk.filter(c => c.pileIndex === null);
   const piles = Array.from({ length: 8 }).map((_, i) => state.desk.filter(c => c.pileIndex === i));
   const [activeCard, setActiveCard] = useState<DeskCard | null>(null);
   const [showGrading, setShowGrading] = useState(false);
+  const [selectedBinderId, setSelectedBinderId] = useState(state.binders[0]?.id || '');
+  const localStorage = state.storage.filter(unit => unit.locationId === state.currentLocationId);
+  const selectedStorage = localStorage.find(unit => unit.id === state.selectedStorageId) || localStorage[0];
+  const [pileTargets, setPileTargets] = useState<Record<number, string>>({});
+  const showNextCard = (completedInstanceId: string) => {
+    setActiveCard(drawPile.find(card => card.instanceId !== completedInstanceId) || null);
+  };
 
   const moveCard = (targetPileIndex: number) => {
     if (!activeCard) return;
     if (consumeEnergy(GAME_CONFIG.energy.costs.sortCard)) {
       setState(prev => ({ ...prev, desk: prev.desk.map(c => c.instanceId === activeCard.instanceId ? { ...c, pileIndex: targetPileIndex } : c) }));
-      setActiveCard(null);
+      showNextCard(activeCard.instanceId);
     }
   };
 
   const storeSorted = () => {
-    setState(prev => {
-      const newState = { ...prev };
-      const sortedCards = newState.desk.filter(c => c.pileIndex !== null);
-      let remainingToStore = [...sortedCards];
-      
-      for (const unit of newState.storage) {
-        const capacity = (GAME_CONFIG.storageDefs as any)[unit.typeId].capacityPerSlot;
-        for (const slot of unit.slots) {
-          const space = capacity - slot.cards.length;
-          if (space > 0 && remainingToStore.length > 0) {
-            const toAdd = remainingToStore.slice(0, space).map(({ pileIndex, ...rest }) => rest);
-            slot.cards.push(...toAdd);
-            remainingToStore = remainingToStore.slice(space);
-          }
-        }
-      }
-      const storedIds = new Set(sortedCards.filter(c => !remainingToStore.includes(c)).map(c => c.instanceId));
-      newState.desk = newState.desk.filter(c => !storedIds.has(c.instanceId));
-      if (remainingToStore.length > 0) alert("Not enough storage space! Some sorted cards remain on the desk.");
-      return newState;
-    });
+    const result = storeDeskPiles(state, pileTargets, selectedStorage?.slots[0]?.id);
+    if (result.moved === 0) return;
+    setState(prev => storeDeskPiles(prev, pileTargets, selectedStorage?.slots[0]?.id).state);
+    if (result.remaining > 0) alert('The selected drawers are full or unavailable. Cards that did not fit remain on the desk.');
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
   };
 
   const throwAway = () => {
     if (!activeCard) return;
     setState(prev => ({ ...prev, desk: prev.desk.filter(c => c.instanceId !== activeCard.instanceId) }));
-    setActiveCard(null);
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
+    showNextCard(activeCard.instanceId);
   };
 
   const moveToBinder = () => {
     if (!activeCard) return;
+    const binder = state.binders.find(item => item.id === selectedBinderId && item.cards.length < item.pageCount * item.slotsPerPage);
+    if (!binder) {
+      alert('No binder has an available slot. Purchase or empty a binder before moving this card.');
+      return;
+    }
     setState(prev => {
       const { pileIndex, ...cardToBind } = activeCard;
       return { 
         ...prev, 
-        binder: [...prev.binder, cardToBind],
+        binders: prev.binders.map(item => item.id === binder.id ? { ...item, used: true, cards: [...item.cards, cardToBind] } : item),
         desk: prev.desk.filter(c => c.instanceId !== activeCard.instanceId) 
       };
     });
-    setActiveCard(null);
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
+    showNextCard(activeCard.instanceId);
   };
 
   const sellCard = () => {
     if (!activeCard) return;
     const cardData = dictionary[activeCard.cardId];
     if (!cardData) return;
+    if (cardData.marketPrice <= 0) {
+      alert('Market data is unavailable for this card. Store it and set a manual Singles sale price during a Live Sale.');
+      return;
+    }
     
     const saleValue = getCalculatedCardValue(cardData, activeCard.condition, activeCard.grade, activeCard.gradingCompany) * state.profitMargin;
     
@@ -77,7 +80,8 @@ export const ScreenDesk = () => {
       shopStats: { ...prev.shopStats, itemsSold: prev.shopStats.itemsSold + 1 },
       desk: prev.desk.filter(c => c.instanceId !== activeCard.instanceId) 
     }));
-    setActiveCard(null);
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
+    showNextCard(activeCard.instanceId);
   };
 
   const donateCard = (storeId: string) => {
@@ -99,7 +103,8 @@ export const ScreenDesk = () => {
       newState.reputation = { ...newState.reputation, [storeId]: (newState.reputation[storeId] || 0) + repGained };
       return newState;
     });
-    setActiveCard(null);
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
+    showNextCard(activeCard.instanceId);
   };
 
   const gradeCard = (companyId: string) => {
@@ -124,6 +129,7 @@ export const ScreenDesk = () => {
       currency: prev.currency - company.cost,
       desk: prev.desk.map(c => c.instanceId === activeCard.instanceId ? { ...c, grade: finalGrade, gradingCompany: companyId } : c)
     }));
+    advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
     setActiveCard(prev => prev ? { ...prev, grade: finalGrade, gradingCompany: companyId } : null);
     setShowGrading(false);
   };
@@ -140,23 +146,32 @@ export const ScreenDesk = () => {
   const activeCardData = activeCard ? dictionary[activeCard.cardId] : null;
   const activeCardValue = activeCardData && activeCard ? getCalculatedCardValue(activeCardData, activeCard.condition, activeCard.grade, activeCard.gradingCompany) : 0;
 
+  if (state.currentLocationId !== state.homeLocationId) {
+    return (
+      <div className="p-8 text-center text-slate-400">
+        <h2 className="mb-2 text-xl font-bold text-white">The Desk Is at Home</h2>
+        <p>Return to your bedroom to manage desk cards and sort them into local storage.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4 pb-24 h-[calc(100vh-60px)] flex flex-col relative">
-      <div className="flex justify-between items-center mb-4 shrink-0">
+    <div className="desk-screen desk-layout p-4 pb-24 h-[calc(100vh-60px)] flex flex-col relative">
+      <div className="desk-header flex justify-between items-center mb-4 shrink-0">
         <h2 className="text-2xl font-bold text-white">The Desk</h2>
         <div className="text-sm font-medium">
           <span className={`${state.desk.length > GAME_CONFIG.world.deskCapacity * 0.8 ? 'text-red-400' : 'text-red-400/80'}`}>Capacity: {state.desk.length} / {GAME_CONFIG.world.deskCapacity}</span>
         </div>
       </div>
 
-      <div className="bg-slate-900/50 rounded-2xl p-4 border border-slate-700 flex flex-col mb-4 shadow-inner relative overflow-hidden flex-shrink-0" style={{ minHeight: '380px' }}>
+      <div className="desk-board bg-slate-900/50 rounded-2xl p-4 border border-slate-700 flex flex-col mb-4 shadow-inner relative overflow-hidden flex-shrink-0" style={{ minHeight: '380px' }}>
         <div className="absolute left-4 top-1/2 -translate-y-1/2 w-24 h-36 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center opacity-30 z-0 pointer-events-none">
           <span className="text-slate-500 font-bold rotate-[-90deg] tracking-widest uppercase text-sm">Draw Pile</span>
         </div>
 
-        <div className="flex justify-between h-full relative z-10">
+        <div className="desk-board-content flex justify-between h-full relative z-10">
           {/* Active Card Area */}
-          <div className="flex-1 flex justify-center items-center relative pr-4">
+          <div className="desk-card-area flex-1 flex justify-center items-center relative pr-4">
             {activeCard && activeCardData ? (
                <div className="relative w-56 sm:w-64 aspect-[2.5/3.5] animate-in fade-in zoom-in-95 duration-200">
                   <div className={`w-full h-full rounded-xl shadow-2xl border-4 ${activeCard.isFoil ? 'border-yellow-400' : 'border-slate-700'} bg-slate-800 overflow-hidden relative`}>
@@ -185,21 +200,31 @@ export const ScreenDesk = () => {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-col justify-center space-y-2.5 pl-4 w-28 sm:w-32 shrink-0 border-l border-slate-700/50">
+          <div className="desk-actions flex flex-col justify-center space-y-2.5 pl-4 w-28 sm:w-32 shrink-0 border-l border-slate-700/50">
              <button onClick={storeSorted} disabled={piles.every(p => p.length === 0)} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs sm:text-sm font-bold py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full">
                <Archive size={14} className="mr-1.5"/> Store All
              </button>
 
              {activeCard && activeCardData && (
                 <>
-                  <button onClick={sellCard} className="bg-green-700 hover:bg-green-600 text-white text-xs py-1.5 px-2 rounded-lg shadow-md transition-colors flex flex-col items-center justify-center w-full border border-green-600">
+                  <button onClick={sellCard} disabled={activeCardData.marketPrice <= 0} className="bg-green-700 hover:bg-green-600 disabled:opacity-40 text-white text-xs py-1.5 px-2 rounded-lg shadow-md transition-colors flex flex-col items-center justify-center w-full border border-green-600">
                     <div className="flex items-center font-bold mb-0.5"><DollarSign size={12} className="mr-0.5"/> Sell</div>
                     <div className="text-[10px] font-mono opacity-90">${(activeCardValue * state.profitMargin).toFixed(2)}</div>
                   </button>
+                  {activeCardData.marketPrice <= 0 && <div className="text-[9px] leading-tight text-amber-300">Market data missing. Store it for a manual Singles sale price.</div>}
 
                   <button onClick={moveToBinder} className="bg-purple-700 hover:bg-purple-600 text-white text-xs py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full border border-purple-600">
                     <BookOpen size={14} className="mr-1.5"/> Binder
                   </button>
+                  {state.binders.length > 0 && (
+                    <label className="text-[10px] text-slate-300">
+                      Destination
+                      <select value={selectedBinderId} onChange={event => setSelectedBinderId(event.target.value)} className="block w-full bg-slate-900 text-white rounded p-1 mt-1">
+                        {state.binders.map(binder => <option key={binder.id} value={binder.id}>{binder.name} ({binder.cards.length}/{binder.pageCount * binder.slotsPerPage})</option>)}
+                      </select>
+                      <span className="block text-slate-500 mt-1">Copies already in binder: {state.binders.find(binder => binder.id === selectedBinderId)?.cards.filter(card => card.cardId === activeCard.cardId).length || 0}</span>
+                    </label>
+                  )}
 
                   {!activeCard.grade && (
                     <button onClick={() => setShowGrading(true)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full border border-slate-600">
@@ -230,7 +255,7 @@ export const ScreenDesk = () => {
         )}
       </div>
 
-      <div className="h-8 flex items-center justify-center mb-4 flex-shrink-0">
+      <div className="desk-footer h-8 flex items-center justify-center mb-4 flex-shrink-0">
         {activeCard ? (
           <div className="text-sm text-blue-300 font-medium flex items-center bg-blue-900/30 px-4 py-1.5 rounded-full border border-blue-800/50">
             Tap a pile to move <strong className="text-white mx-1.5 truncate max-w-[150px]">{activeCardData?.name}</strong> <Zap size={12} className="text-yellow-400 ml-1.5 mr-0.5"/>-1
@@ -241,10 +266,21 @@ export const ScreenDesk = () => {
       </div>
 
       {/* Sorting Piles */}
-      <div className="flex-1 grid grid-cols-4 gap-2 sm:gap-3 content-start overflow-y-auto custom-scrollbar pr-1 pb-4">
+      <div className="desk-piles flex-1 grid grid-cols-4 gap-2 sm:gap-3 content-start overflow-y-auto custom-scrollbar pr-1 pb-4">
         {piles.map((pile, i) => (
-          <div key={i} onClick={() => moveCard(i)} className={`h-36 sm:h-40 bg-slate-900/80 rounded-xl border-2 ${activeCard ? 'border-blue-500/50 cursor-pointer hover:bg-slate-800 hover:border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'border-slate-800'} flex flex-col items-center p-2 relative transition-all duration-200`}>
+          <div key={i} onClick={() => moveCard(i)} className={`h-44 sm:h-48 bg-slate-900/80 rounded-xl border-2 ${activeCard ? 'border-blue-500/50 cursor-pointer hover:bg-slate-800 hover:border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'border-slate-800'} flex flex-col items-center p-2 relative transition-all duration-200`}>
             <div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-widest z-10 bg-slate-900/80 px-2 rounded-full mt-1">Pile {i + 1}</div>
+            <select
+              aria-label={`Destination drawer for pile ${i + 1}`}
+              value={pileTargets[i] || selectedStorage?.slots[0]?.id || ''}
+              onClick={event => event.stopPropagation()}
+              onChange={event => setPileTargets(prev => ({ ...prev, [i]: event.target.value }))}
+              className="w-full bg-slate-800 text-[9px] text-slate-300 rounded px-1 py-1 z-10"
+            >
+              {localStorage.flatMap(unit => unit.slots.map((slot, drawerIndex) => (
+                <option key={slot.id} value={slot.id}>{unit.id} · Drawer {drawerIndex + 1} ({slot.cards.length})</option>
+              )))}
+            </select>
             {pile.length > 0 ? (
               <div className="relative mt-auto w-full flex justify-center pb-2">
                  {pile.map((c, idx) => {
