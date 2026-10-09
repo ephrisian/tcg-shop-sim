@@ -5,14 +5,13 @@ import { gameTimeOfDay } from '../game/time';
 import { Map as MapIcon, Archive, Boxes, PackageOpen, Sun, Zap, Coffee, BookOpen, Library } from 'lucide-react';
 
 export const Navigation = ({ current, setCurrent }: { current: string, setCurrent: (s: string) => void }) => (
-  <nav className={`app-nav fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-50 ${import.meta.env.DEV ? 'app-nav-dev' : ''}`}>
+  <nav className={`app-nav fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-50`}>
     <NavBtn icon={<PackageOpen />} label="Inventory" active={current === 'inventory'} onClick={() => setCurrent('inventory')} />
     <NavBtn icon={<MapIcon />} label="City" active={current === 'city'} onClick={() => setCurrent('city')} />
     <NavBtn icon={<Archive />} label="Desk" active={current === 'desk'} onClick={() => setCurrent('desk')} />
     <NavBtn icon={<Boxes />} label="Storage" active={current === 'storage'} onClick={() => setCurrent('storage')} />
     <NavBtn icon={<BookOpen />} label="Collection" active={current === 'collection'} onClick={() => setCurrent('collection')} />
     <NavBtn icon={<Library />} label="Binders" active={current === 'binders'} onClick={() => setCurrent('binders')} />
-    {import.meta.env.DEV && <NavBtn icon={<Library />} label="Dev Data" active={current === 'settings'} onClick={() => setCurrent('settings')} />}
   </nav>
 );
 

@@ -89,7 +89,8 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
     }
   };
 
-  const generateSinglesRequests = (): LiveRequest[] => {
+  const generateSinglesRequests = (typeId: string): LiveRequest[] => {
+    const isSingles = typeId === 'singles';
     const sources = [
       ...state.storage.flatMap(unit => unit.slots.map(drawer => ({
         type: 'storage' as const,
@@ -97,16 +98,18 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
         drawerId: drawer.id,
         cards: drawer.cards,
       }))),
-      ...state.binders.filter(binder => includedBinderIds.includes(binder.id)).map(binder => ({
+      ...state.binders.filter(binder => isSingles && includedBinderIds.includes(binder.id)).map(binder => ({
         type: 'binder' as const,
         binderId: binder.id,
         cards: binder.cards,
       })),
     ].filter(source => source.cards.some(instance => dictionary[instance.cardId]));
-    const selectedProducts = sellableSealedAtHome.filter(item => includedSealedIds.includes(item.id));
+    const selectedProducts = isSingles
+      ? sellableSealedAtHome.filter(item => includedSealedIds.includes(item.id))
+      : sellableSealedAtHome;
     const productQueueReserve = selectedProducts.length > 0 ? 1 : 0;
     const requests: LiveRequest[] = [];
-    for (let attempt = 0; attempt < sources.length && requests.length < DEVELOPER_SETTINGS.live.queue_limit - productQueueReserve; attempt += 1) {
+    for (let attempt = 0; attempt < DEVELOPER_SETTINGS.live.queue_limit * 4 && sources.length > 0 && requests.length < DEVELOPER_SETTINGS.live.queue_limit - productQueueReserve; attempt += 1) {
       const source = sources[Math.floor(Math.random() * sources.length)];
       const available = source.cards.filter(instance => dictionary[instance.cardId]);
       if (available.length === 0) continue;
@@ -186,6 +189,11 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
       return;
     }
     const typeDef = (GAME_CONFIG.liveShows.types as any)[typeId];
+    const requests = generateSinglesRequests(typeId);
+    if (typeId === 'singles' && requests.length === 0) {
+      alert('Your customer queue would be empty. Add cards to storage drawers, or tick binders or sealed products under "Singles sellable inventory", then try again.');
+      return;
+    }
     if (consumeEnergy(typeDef.cost)) {
       const baseViewers = Math.floor(Math.random() * 10) + 5;
       const shopBonus = Math.floor((state.shopStats.itemsSold * 0.1) + (state.shopStats.liveShows * 2) + state.shopStats.returnBuyers);
@@ -194,7 +202,6 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
       const whales = Math.floor(totalViewers * 0.05 * typeDef.whaleAttraction);
       const frugal = Math.floor(totalViewers * 0.40 * typeDef.frugalAttraction);
 
-      const requests = typeId === 'singles' ? generateSinglesRequests() : [];
       setState(prev => ({ 
         ...prev, 
         shopStats: { ...prev.shopStats, liveShows: prev.shopStats.liveShows + 1 },
@@ -256,7 +263,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
                 <div key={id} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 flex justify-between items-center">
                    <div>
                       <div className="text-sm font-bold text-white">{type.name}</div>
-                      <div className="text-xs text-slate-400">{type.desc}</div>
+                      <div className="text-xs text-slate-400">{type.desc} Customer queue is built from {id === 'singles' ? 'the sellable inventory you choose below.' : 'your stored singles and sealed products at home.'}</div>
                    </div>
                    <button onClick={() => startLiveShow(id)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-3 rounded shadow flex items-center shrink-0 ml-2">
                      Go Live <Zap size={10} className="ml-1 mr-0.5 text-yellow-300"/>{type.cost}
@@ -299,7 +306,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
         </div>
       )}
 
-      {state.liveState.active && state.liveState.type === 'singles' && <SinglesRequests />}
+      {state.liveState.active && <SinglesRequests />}
 
       <h2 className="text-xl font-bold text-white mb-4">Sealed Inventory</h2>
       {state.sealed.length === 0 ? (
@@ -578,10 +585,10 @@ const SinglesRequests = () => {
   return (
     <section className="bg-slate-900 rounded-xl border border-slate-700 p-4 mb-5">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold text-white">Singles buyer requests</h3>
+        <h3 className="font-bold text-white">Customer queue</h3>
         <span className="text-xs text-slate-400">{state.liveState.requests.length}/{DEVELOPER_SETTINGS.live.queue_limit} active · Traffic {state.traffic}</span>
       </div>
-      {state.liveState.requests.length === 0 ? <p className="text-sm text-slate-500">No requests remain in this live session.</p> : (
+      {state.liveState.requests.length === 0 ? <p className="text-sm text-slate-500">No customers are waiting. Stock storage drawers or bring sealed product home to attract buyers.</p> : (
         <div className="space-y-2">
           {state.liveState.requests.map(item => (
             <div key={item.id} className="bg-slate-800 rounded p-3 flex flex-wrap justify-between gap-2 items-center">

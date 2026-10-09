@@ -18,6 +18,13 @@ downloads. Opening `index.html` as a file only shows a reminder to start it.
   set's `set.json`, prices, and (optionally) card art to
   `developer-tools/set-packages/lorcana/<set code>/`. Re-importing overwrites.
   `npm run fetch:art -- <package folder>` can fetch missing art later.
+- **Card.fun Importer** (same page) takes a `https://card.fun/products/<id>` URL.
+  The server opens it in a headless Edge/Chrome (via `playwright-core`), clicks
+  every "MORE" button, and writes `set.json` plus card art to
+  `developer-tools/set-packages/cardfun/<id>/`. Each section title (CR, SSR, …)
+  becomes the card rarity; values default to 0 and the default pack/box should
+  be reviewed. Art is the 358px thumbnail, as card.fun's signed image links
+  cannot be resized. It needs Edge or Chrome installed.
 - **New** starts a new full set package. **Load JSON…** opens a saved
   packaging-only config, or converts a full set package into a packaging-only
   copy. Existing card records, values, and card artwork are never editable in
@@ -70,10 +77,7 @@ composition. Set each product's `image` to a relative path and place those
 files under the package image folder.
 
 Edit the full package produced by the Data Importer in the **Products** tab,
-then use **Save to set-packages**. The package-only config can also be
-applied to an API set in the development app's **Dev Data** screen for local
-testing; that IndexedDB change does not transfer to other devices or become
-part of a release build.
+then use **Save to set-packages**.
 The manifest format is described in
 [`../schemas/product-packaging.schema.json`](../schemas/product-packaging.schema.json).
 

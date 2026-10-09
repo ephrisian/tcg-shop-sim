@@ -204,10 +204,6 @@ export const GameContext = createContext<{
   setState: React.Dispatch<React.SetStateAction<GameState>>;
   dictionary: Record<string, CardData>;
   availableSets: ImportedSet[];
-  refreshData: () => Promise<void>;
-  importSet: (setId: string) => Promise<void>;
-  importSetPackage: (jsonFile: File, imageFiles: File[]) => Promise<void>;
-  importProductPackaging: (jsonFile: File, imageFiles: File[]) => Promise<void>;
   consumeEnergy: (cost: number, actionMinutes?: number) => boolean;
   sleep: (hours?: number) => void;
   advanceTime: (minutes: number) => void;

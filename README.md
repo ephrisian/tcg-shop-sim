@@ -5,6 +5,17 @@ and Tailwind CSS. Begin with Live Sales in a bedroom, then explore districts,
 buy property and storage, open sealed products, organize cards, run Singles
 sales, and order products from online vendors.
 
+**New to the game? Read the [Game Rules](./GAME_RULES.md).**
+
+## Contents
+
+- [Run locally](#run-locally) · [Desktop app](#desktop-app-windows) ·
+  [Commands](#available-commands)
+- [Developer authoring tools](#developer-authoring-tools)
+- [Project structure](#project-structure) · [Data and saves](#data-and-saves)
+- [Implemented gameplay systems](#implemented-gameplay-systems)
+- [Game Rules](./GAME_RULES.md)
+
 ## Run locally
 
 Requirements: Node.js and npm.
@@ -56,6 +67,8 @@ Run these from `tcg-shop-sim`:
 | `npm.cmd run build` | Type-check and create a production build in `dist/`. |
 | `npm.cmd run preview` | Serve the production build locally after building. |
 | `npm.cmd test` | Run gameplay-rule, set-package, and developer-tool tests. |
+| `npm.cmd run author` | Start the set authoring server at <http://localhost:5179/>. |
+| `npm.cmd run fetch:art -- <package folder>` | Download missing card art for a package. |
 | `npm.cmd run validate:set -- <package.json> [image-folder]` | Validate a set package. |
 | `npm.cmd run export:set -- <package.json> <output-folder> [image-folder]` | Export a validated package and referenced images. |
 | `npm.cmd run world:grid -- <command> <world.json> [options]` | Create, validate, and export district-grid data. |
@@ -64,18 +77,48 @@ Run these from `tcg-shop-sim`:
 
 ## Developer authoring tools
 
-- Open [`tcg-shop-sim/developer-tools/index.html`](./tcg-shop-sim/developer-tools/index.html)
-  in Chrome or Edge to import Lorcast sets with the **Data Importer**, download
-  their card data/artwork, and save build-ready packages under
-  `tcg-shop-sim/developer-tools/set-packages/`. Use **New Packaging Config** to
-  adjust pack/box definitions and product artwork without modifying card data,
-  values, or card artwork. The player-facing release does not expose set import
-  or data-management controls. Development and production builds validate and
-  compile source packages into the app. See the
-  [set authoring guide](./tcg-shop-sim/developer-tools/README.md).
-- Use `npm.cmd run world:grid -- init world.json` to create a world definition,
-  then use the documented district/location commands to edit, validate, and
-  export it. See the [world grid guide](./tcg-shop-sim/docs/world-grid-tool.md).
+Start the authoring server from `tcg-shop-sim` and open <http://localhost:5179/>
+in Chrome or Edge (opening `index.html` directly is read-only):
+
+```powershell
+npm.cmd run author
+```
+
+The server reads and writes `tcg-shop-sim/developer-tools/set-packages/`
+directly, so there are no ZIPs or folder prompts. It provides:
+
+- **Set Package Library** – lists every package in `set-packages/`. **Edit Set**
+  opens one; **Save to set-packages** writes it back for the next build.
+- **Lorcast Data Importer** – fetches a Lorcana set, then writes `set.json`,
+  prices, and optionally card art to `set-packages/lorcana/<set code>/`.
+- **Card.fun Importer** – enter a `https://card.fun/products/<id>` URL. The
+  server opens it in a headless Edge or Chrome (via `playwright-core`), clicks
+  every "MORE" button, and writes `set.json` plus art to
+  `set-packages/cardfun/<id>/`. Section titles (CR, SSR, …) become rarities;
+  values default to 0 and the default pack/box should be reviewed. Art is the
+  358px thumbnail card.fun serves. Requires Edge or Chrome installed. This
+  replaces the old `tm_cardfun_*.js` Tampermonkey userscripts, which are no
+  longer needed.
+- **Editor tabs** – game/set, cards, values, images, products (pack slots, boxes,
+  artwork), redemptions, credits, and validate/export.
+- **New Packaging Config** – adjust pack/box definitions and product artwork
+  without touching card data, values, or card art.
+
+The player-facing release has no set import or data-management controls.
+Development and production builds validate and compile source packages into
+the app. See the [set authoring guide](./tcg-shop-sim/developer-tools/README.md)
+and [set package format](./tcg-shop-sim/docs/set-packages.md).
+
+Other developer tools:
+
+- `npm.cmd run validate:set` / `export:set` / `fetch:art` validate a package,
+  export it with its images, or fetch missing art.
+- `npm.cmd run world:grid -- init world.json` creates a world definition; use
+  the documented district/location commands to edit, validate, and export it.
+  See the [world grid guide](./tcg-shop-sim/docs/world-grid-tool.md).
+- `tcg-shop-sim/settings.ini` holds all balance values (energy, time, storage,
+  binders, businesses, Live Sales, shipping, redemptions). It is compiled into
+  the build.
 
 ## Project structure
 
@@ -85,6 +128,9 @@ tcg-shop-sim/
   main.tsx                Browser entry point
   components/             Shared UI components, including navigation
   features/               Home, City, Sealed, Desk, Storage, Collection, Settings
+  developer-tools/        Set authoring UI and the set-packages source folder
+  scripts/                Authoring server, Card.fun scraper, package compiler/validator
+  settings.ini            Developer balance values compiled into the build
   game/
     config.ts             Game balance, locations, products, and set themes
     database.ts           IndexedDB persistence for sets and cards
@@ -109,8 +155,8 @@ the app.
   installs these catalogs locally at startup. Rebuild and redistribute the app
   to ship catalog changes. Existing card records remain immutable, while
   compiled updates may refresh product definitions and packaging artwork.
-- Developer builds include a Dev Data screen for importing/testing catalogs;
-  this screen is absent from production navigation.
+- There is no in-game data import. Sets are imported and edited only in the
+  developer authoring tool (`npm run author`).
 - Browser data is local to that browser/profile. Clearing site data removes
   the local save and imported card database, so back up data before clearing
   browser storage.
@@ -132,3 +178,11 @@ Display Walls are explicitly post-MVP.
 
 `card_collector.js` is a separate card-data collection/editor prototype, not
 part of the Vite game runtime.
+
+## Documentation
+
+- [Game Rules](./GAME_RULES.md) – how to play.
+- [Set authoring guide](./tcg-shop-sim/developer-tools/README.md)
+- [Set package format](./tcg-shop-sim/docs/set-packages.md)
+- [World grid tool](./tcg-shop-sim/docs/world-grid-tool.md)
+- [plans.txt](./plans.txt) – MVP outline and acceptance criteria.

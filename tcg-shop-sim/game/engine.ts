@@ -19,7 +19,7 @@ export const generatePack = async (setId: string, printRuns: Record<string, numb
   let allSetCards = await idbGetAllByIndex(STORE_CARDS, 'setId', actualSetId);
   if (allSetCards.length === 0) allSetCards = await idbGetAllByIndex(STORE_CARDS, 'setId', actualSetId.toLowerCase());
   if (allSetCards.length === 0) allSetCards = await idbGetAllByIndex(STORE_CARDS, 'setId', actualSetId.toUpperCase());
-  if (allSetCards.length === 0) throw new Error(`Set data not found for ${actualSetId}. Please import it in Settings.`);
+  if (allSetCards.length === 0) throw new Error(`Set data not found for ${actualSetId}. Import it in the developer authoring tool and rebuild.`);
 
   const cardsByRarity = allSetCards.reduce((acc: any, c: any) => {
     const norm = normalizeRarity(c.rarity);
@@ -87,36 +87,6 @@ export const generatePack = async (setId: string, printRuns: Record<string, numb
   }
 
   return { pack, runUpdates, redemption };
-};
-
-export const fetchLorcastSets = async () => {
-  const res = await fetch("https://api.lorcast.com/v0/sets");
-  if (!res.ok) throw new Error("Failed to fetch sets from Lorcast API.");
-  const data = await res.json();
-  if (!data.results) throw new Error("Invalid response format.");
-  return data.results.map((s: any) => ({ id: s.code.toUpperCase(), name: s.name, code: s.code.toUpperCase() }));
-};
-
-export const fetchLorcastCardsForSet = async (setCode: string) => {
-  let url: string | null = `https://api.lorcast.com/v0/cards/search?q=set:${setCode.toLowerCase()}`;
-  let allCards: any[] = [];
-  while (url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch cards for set ${setCode}`);
-    const data = await res.json();
-    if (data.results) allCards = allCards.concat(data.results);
-    if (data.has_more && data.next_page) url = data.next_page;
-    else url = null; 
-  }
-  if (allCards.length === 0) return [];
-  return allCards.map((c: any) => ({
-    id: c.id, setId: setCode.toUpperCase(), name: c.name, version: c.version || '',
-    rarity: normalizeRarity(c.rarity), marketPrice: c.prices?.usd || 0,
-    imageUrl: c.image_uris?.digital?.normal || c.image_uris?.digital?.large || c.image_uris?.normal || c.image_uris?.large || '', 
-    inkColor: c.ink, type: c.type, cost: c.cost, strength: c.strength, willpower: c.willpower, lore: c.lore,
-    cardData: c,
-    rulesText: c.text, flavorText: c.flavor_text
-  }));
 };
 
 export const getCalculatedCardValue = (cardData: CardData, condition: number, grade?: number, gradingCompany?: string) => {

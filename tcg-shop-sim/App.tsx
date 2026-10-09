@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { defaultGameState, GameContext, migrateGameState } from './game/state';
-import { STORE_CARDS, STORE_SETS, idbGetAll, idbPutAll } from './game/database';
-import { fetchLorcastCardsForSet, fetchLorcastSets } from './game/engine';
-import { importProductPackaging as saveProductPackaging, importSetPackage as saveSetPackage } from './game/setPackages';
+import { STORE_CARDS, STORE_SETS, idbGetAll } from './game/database';
 import { installCompiledSetPackages } from './game/compiledCatalog';
 import { DEVELOPER_SETTINGS, GAME_CONFIG } from './game/config';
 import { adjustedEnergyCost, gameDayForClock, gameTimeOfDay, MINUTES_PER_GAME_DAY, MINUTES_PER_GAME_HOUR, mustForceSleep, startsRecoverySleep } from './game/time';
@@ -16,7 +14,6 @@ import { ScreenSealed, ScreenPackOpener } from './features/sealed';
 import { ScreenDesk } from './features/desk';
 import { ScreenStorage } from './features/storage';
 import { ScreenCollection } from './features/collection';
-import { ScreenSettings } from './features/settings';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('inventory');
@@ -144,51 +141,8 @@ export default function App() {
     });
   };
 
-  const refreshData = async () => {
-    if (!import.meta.env.DEV) throw new Error('Card catalogs are compiled into production builds.');
-    const remoteSets = await fetchLorcastSets();
-    const existingSets = await idbGetAll(STORE_SETS);
-    const existingById = new Map(existingSets.map(set => [set.id, set]));
-    const existingByCode = new Map(existingSets.map(set => [String(set.code || '').toLocaleLowerCase(), set]));
-    await idbPutAll(STORE_SETS, remoteSets.map(set => {
-      const prior = existingById.get(set.id) || existingByCode.get(String(set.code || '').toLocaleLowerCase());
-      return prior?.products ? { ...set, products: prior.products } : set;
-    }));
-    setAvailableSets(await idbGetAll(STORE_SETS));
-  };
-
-  const importSet = async (setId: string) => {
-    if (!import.meta.env.DEV) throw new Error('Card catalogs are compiled into production builds.');
-    const cards = await fetchLorcastCardsForSet(setId);
-    if (cards.length === 0) throw new Error(`No cards found for set ${setId}.`);
-    await idbPutAll(STORE_CARDS, cards);
-    const allCards = await idbGetAll(STORE_CARDS);
-    setDictionary(Object.fromEntries(allCards.map(card => [card.id, card])));
-  };
-
-  const importPackage = async (jsonFile: File, imageFiles: File[]) => {
-    const importedSet = await saveSetPackage(jsonFile, imageFiles);
-    const cards = await idbGetAll(STORE_CARDS);
-    const allSets = await idbGetAll(STORE_SETS);
-    setDictionary(Object.fromEntries(cards.map(card => [card.id, card])));
-    setAvailableSets(allSets);
-    setState(prev => ({
-      ...prev,
-      newsFeed: [`Imported ${importedSet.name} for ${importedSet.gameName}.`, ...prev.newsFeed].slice(0, 15),
-    }));
-  };
-
-  const importPackaging = async (jsonFile: File, imageFiles: File[]) => {
-    const updatedSet = await saveProductPackaging(jsonFile, imageFiles);
-    setAvailableSets(await idbGetAll(STORE_SETS));
-    setState(prev => ({
-      ...prev,
-      newsFeed: [`Updated product packaging for ${updatedSet.name}.`, ...prev.newsFeed].slice(0, 15),
-    }));
-  };
-
   return (
-    <GameContext.Provider value={{ state, setState, dictionary, availableSets, refreshData, importSet, importSetPackage: importPackage, importProductPackaging: importPackaging, consumeEnergy, sleep, advanceTime }}>
+    <GameContext.Provider value={{ state, setState, dictionary, availableSets, consumeEnergy, sleep, advanceTime }}>
       <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-blue-500/30">
         {loadError && <div role="alert" className="bg-red-950 text-red-100 px-4 py-2 text-sm">{loadError}</div>}
         <style>{`
@@ -208,9 +162,6 @@ export default function App() {
             .app-main { padding-right: 5.5rem; }
             .app-nav { top: 0; right: 0; bottom: 0; left: auto; width: 5rem; flex-direction: column; justify-content: center; gap: .4rem; padding: .5rem; border-top: 0; border-left: 1px solid rgb(30 41 59); }
             .app-nav button { width: 100%; }
-            .app-nav-dev button { padding: .4rem .15rem; }
-            .app-nav-dev button span { font-size: 8px; }
-            .app-nav-dev button svg { width: 20px; height: 20px; }
             .app-main > .desk-screen { height: calc(100dvh - 72px); min-height: 0; }
             .desk-layout { display: grid; grid-template-columns: minmax(250px, .8fr) minmax(340px, 1.2fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "header header" "board piles" "footer piles"; gap: .75rem; }
             .desk-header { grid-area: header; }
@@ -263,7 +214,6 @@ export default function App() {
                   {currentScreen === 'storage' && <ScreenStorage />}
                   {currentScreen === 'collection' && <ScreenCollection view="collection" />}
                   {currentScreen === 'binders' && <ScreenCollection view="binders" />}
-                  {import.meta.env.DEV && currentScreen === 'settings' && <ScreenSettings />}
                 </>
               )}
             </main>

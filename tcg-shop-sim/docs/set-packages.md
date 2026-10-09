@@ -53,10 +53,7 @@ These product images are separate from the immutable card `image` associations.
 For API-backed sets, use the developer tool's **Data Importer** to fetch the
 set's card records and artwork directly into the build-time package folder. To
 change only product definitions and their artwork, use **New Packaging Config**
-or edit the imported package's **Products** tab. The development app's
-developer-only **Dev Data** screen can apply a product-packaging config to the
-local IndexedDB for testing, without changing card records, values, or card
-artwork.
+or edit the imported package's **Products** tab.
 
 To include a set in development and release builds, place its complete package
 and referenced images under `developer-tools/set-packages/`. The pre-build

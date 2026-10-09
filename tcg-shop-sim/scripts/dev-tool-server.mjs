@@ -2,13 +2,14 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scrapeCardFunSet } from './cardfun-scraper.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const toolDir = path.join(root, 'developer-tools');
 const packagesDir = path.join(toolDir, 'set-packages');
 const port = Number(process.env.DEV_TOOL_PORT || 5179);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css' };
-const artHosts = new Set(['cards.lorcast.io']);
+const artHosts = new Set(['cards.lorcast.io', 'goodso.card.fun']);
 
 function inside(base, target) {
   const relative = path.relative(base, target);
@@ -63,6 +64,15 @@ const server = http.createServer(async (req, res) => {
       const target = path.resolve(packagesDir, url.searchParams.get('path') || '');
       if (!inside(packagesDir, target)) return send(400, 'Invalid path.');
       try { await fs.access(target); return send(200, 'ok'); } catch { return send(404, 'missing'); }
+    }
+    if (url.pathname === '/api/cardfun/scrape' && req.method === 'POST') {
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8')); } catch { return send(400, 'Invalid JSON.'); }
+      try {
+        return send(200, JSON.stringify(await scrapeCardFunSet(String(body?.url || ''))), 'application/json');
+      } catch (error) {
+        return send(422, error instanceof Error ? error.message : 'Scrape failed.');
+      }
     }
     if (url.pathname === '/api/art' && req.method === 'GET') {
       const remote = new URL(url.searchParams.get('url') || '');

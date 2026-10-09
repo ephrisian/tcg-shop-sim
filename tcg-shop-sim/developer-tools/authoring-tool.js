@@ -538,8 +538,94 @@
       el('p', { className: 'hint', textContent: 'Files are written by the local author server to developer-tools/set-packages/lorcana/<set code>/. Re-importing a set overwrites its files.' }),
       el('p', {}, fetchButton, ' ', importButton),
       message,
+      el('hr'),
+      cardFunImportSection(),
     );
     return wrap;
+  }
+
+  function cardFunImportSection() {
+    const section = el('div', {});
+    const urlInput = el('input', { type: 'text', placeholder: 'https://card.fun/products/301', value: 'https://card.fun/products/' });
+    urlInput.style.width = '100%';
+    const downloadArtwork = el('input', { type: 'checkbox', checked: true });
+    const button = el('button', { textContent: 'Import from Card.fun' });
+    const message = el('p', { className: 'hint', textContent: '' });
+    button.onclick = async () => {
+      if (!hasServer) { message.className = 'err'; message.textContent = 'Start the author server (npm run author) and open http://localhost:5179/ to import.'; return; }
+      button.disabled = true;
+      try {
+        message.className = 'hint';
+        message.textContent = 'Loading the page in a headless browser and expanding every section (this can take a minute)…';
+        const scrapeResponse = await fetch('/api/cardfun/scrape', { method: 'POST', body: JSON.stringify({ url: urlInput.value.trim() }) });
+        if (!scrapeResponse.ok) throw new Error(await scrapeResponse.text());
+        const scraped = await scrapeResponse.json();
+        const code = `CF${scraped.productId}`;
+        const packageFolder = `cardfun/${scraped.productId}`;
+        const cardData = scraped.cards.map((card, index) => ({
+          id: `cf-${scraped.productId}-${String(index + 1).padStart(4, '0')}`,
+          name: card.name || `Card ${index + 1}`,
+          rarity: card.section || card.type || 'Base',
+          type: card.type || '',
+        }));
+        const values = cardData.map(card => ({ cardId: card.id, marketPrice: 0 }));
+        const images = [];
+        if (downloadArtwork.checked) {
+          for (let start = 0; start < cardData.length; start += 6) {
+            const batch = cardData.slice(start, start + 6).map(async (card, offset) => {
+              const asset = await fetchLorcastArtwork(scraped.cards[start + offset].imageUrl);
+              const imagePath = `${String(start + offset + 1).padStart(4, '0')}-${card.id}.${asset.extension}`;
+              await writePackageFile(`${packageFolder}/${imagePath}`, asset.blob);
+              images.push({ cardId: card.id, path: imagePath });
+            });
+            await Promise.all(batch);
+            message.textContent = `Downloading artwork ${Math.min(start + 6, cardData.length)} of ${cardData.length}…`;
+          }
+        }
+        const rarities = [...new Set(cardData.map(card => card.rarity))];
+        const packageData = {
+          schemaVersion: 1,
+          game: { id: 'cardfun', name: 'Card.fun', providerId: 'cardfun' },
+          set: { id: code.toLowerCase(), code, name: scraped.title || code, company: 'Card.fun' },
+          card_data: cardData,
+          value: values,
+          ...(images.length ? { image: images.sort((a, b) => a.path.localeCompare(b.path)) } : {}),
+          products: [
+            { id: 'booster-pack', name: 'Booster Pack', type: 'pack', cardsPerPack: 5, slots: [{ rarity: rarities, count: 5 }] },
+            { id: 'booster-box', name: 'Booster Box', type: 'box', packsPerBox: 20, packProductId: 'booster-pack' },
+          ],
+        };
+        const validation = validatePackage(packageData);
+        if (validation.errors.length) throw new Error(`Imported package failed validation: ${validation.errors.join(' ')}`);
+        pkg = packageData;
+        fileName = 'set.json';
+        packagingOnly = false;
+        packageLoaded = true;
+        showingImporter = false;
+        tab = 0;
+        currentPath = `${packageFolder}/set.json`;
+        await writePackageFile(currentPath, JSON.stringify(packageData, null, 2) + '\n');
+        importMessage = `Imported ${packageData.set.name}: ${cardData.length} cards and ${images.length} artwork files written to developer-tools/set-packages/${packageFolder}. Review pack slots and values in Products/Value.`;
+        importMessageType = 'ok';
+        libraryMessage = importMessage;
+        libraryMessageType = 'ok';
+        render();
+      } catch (error) {
+        message.className = 'err';
+        message.textContent = error instanceof Error ? error.message : 'Could not import from Card.fun.';
+        button.disabled = false;
+      }
+    };
+    section.append(
+      el('h2', { textContent: 'Card.fun Importer' }),
+      el('p', { className: 'hint', textContent: 'Enter a card.fun product page. The local server opens it in a headless browser (Edge or Chrome), expands every "MORE" button, and imports each card (rarity = section title) and its art. Artwork is the 358px thumbnail card.fun serves, since its signed image links cannot be resized. Re-importing overwrites.' }),
+      el('div', { className: 'grid' },
+        el('label', { textContent: 'Product URL' }), urlInput,
+        el('label', { textContent: 'Card artwork' }),
+        el('label', {}, downloadArtwork, ' Download and include image files')),
+      el('p', {}, button),
+      message);
+    return section;
   }
 
   async function fetchLorcastSetCards(setCode, progress) {
