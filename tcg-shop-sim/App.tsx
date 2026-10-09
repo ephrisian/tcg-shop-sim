@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { defaultGameState, GameContext, migrateGameState } from './game/state';
-import { STORE_CARDS, STORE_SETS, idbGetAll } from './game/database';
-import { installCompiledSetPackages } from './game/compiledCatalog';
+import { idbGetAll, idbResetCatalog, STORE_CARDS, STORE_SETS } from './game/database';
+import { installCompiledSetPackages, loadCompiledPackageManifest } from './game/compiledCatalog';
 import { DEVELOPER_SETTINGS, GAME_CONFIG } from './game/config';
 import { adjustedEnergyCost, gameDayForClock, gameTimeOfDay, MINUTES_PER_GAME_DAY, MINUTES_PER_GAME_HOUR, mustForceSleep, startsRecoverySleep } from './game/time';
 import { resolveDueShipments } from './game/shipping';
@@ -26,19 +26,27 @@ export default function App() {
 
   useEffect(() => {
     const loadData = async () => {
-      const saved = localStorage.getItem('tcg_sim_save');
-      if (saved) {
-        try {
-          setState(migrateGameState(JSON.parse(saved)));
-        } catch (error) {
-          localStorage.setItem('tcg_sim_save_backup', saved);
-          const message = error instanceof Error ? error.message : 'Unknown save migration error';
-          setLoadError(`Could not load your saved game. A backup was saved as tcg_sim_save_backup: ${message}`);
-          return;
-        }
-      }
       try {
-        await installCompiledSetPackages();
+        const manifest = await loadCompiledPackageManifest();
+        if (localStorage.getItem('tcg_sim_build_id') !== manifest.buildId) {
+          await idbResetCatalog();
+          localStorage.removeItem('tcg_sim_save');
+          setState(defaultGameState);
+          localStorage.setItem('tcg_sim_build_id', manifest.buildId);
+        } else {
+          const saved = localStorage.getItem('tcg_sim_save');
+          if (saved) {
+            try {
+              setState(migrateGameState(JSON.parse(saved)));
+            } catch (error) {
+              localStorage.setItem('tcg_sim_save_backup', saved);
+              const message = error instanceof Error ? error.message : 'Unknown save migration error';
+              setLoadError(`Could not load your saved game. A backup was saved as tcg_sim_save_backup: ${message}`);
+              return;
+            }
+          }
+        }
+        await installCompiledSetPackages(manifest);
         const sets = await idbGetAll(STORE_SETS);
         setAvailableSets(sets);
         const allCards = await idbGetAll(STORE_CARDS);

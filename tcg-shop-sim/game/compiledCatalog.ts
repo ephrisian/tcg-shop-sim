@@ -4,22 +4,31 @@ import { STORE_SETS } from './database';
 
 interface CompiledPackageManifest {
   schemaVersion: number;
+  buildId: string;
   packages: { path: string }[];
 }
 
 const responseFile = async (response: Response, name: string): Promise<File> =>
   new File([await response.blob()], name, { type: response.headers.get('content-type') || 'application/octet-stream' });
 
-export const installCompiledSetPackages = async (): Promise<void> => {
+export const loadCompiledPackageManifest = async (): Promise<CompiledPackageManifest> => {
   const manifestUrl = new URL('compiled-set-packages/manifest.json', document.baseURI);
   const manifestResponse = await fetch(manifestUrl);
   if (!manifestResponse.ok) {
     throw new Error(`Could not load compiled set catalog (${manifestResponse.status}). Rebuild the application to generate it.`);
   }
   const manifest = await manifestResponse.json() as CompiledPackageManifest;
-  if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.packages)) {
+  if (manifest.schemaVersion !== 1 || typeof manifest.buildId !== 'string' || !manifest.buildId ||
+    !Array.isArray(manifest.packages)) {
     throw new Error('Compiled set catalog manifest is invalid.');
   }
+  return manifest;
+};
+
+export const installCompiledSetPackages = async (
+  suppliedManifest?: CompiledPackageManifest,
+): Promise<void> => {
+  const manifest = suppliedManifest || await loadCompiledPackageManifest();
   const existingSetIds = new Set((await idbGetAll(STORE_SETS)).map(set => set.id));
 
   for (const entry of manifest.packages) {

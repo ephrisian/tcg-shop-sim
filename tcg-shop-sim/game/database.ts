@@ -100,3 +100,15 @@ export const idbGetAll = async (storeName: string): Promise<any[]> => {
     request.onerror = () => reject(request.error);
   });
 };
+
+export const idbResetCatalog = async (): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORE_SETS, STORE_CARDS], 'readwrite');
+    tx.objectStore(STORE_SETS).clear();
+    tx.objectStore(STORE_CARDS).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('Catalog reset was cancelled.'));
+  });
+};

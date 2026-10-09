@@ -67,5 +67,9 @@ for (const packagePath of packageFiles) {
   });
 }
 
-writeFileSync(resolve(outputRoot, 'manifest.json'), `${JSON.stringify({ schemaVersion: 1, packages }, null, 2)}\n`);
+writeFileSync(resolve(outputRoot, 'manifest.json'), `${JSON.stringify({
+  schemaVersion: 1,
+  buildId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  packages,
+}, null, 2)}\n`);
 console.log(`Compiled ${packages.length} set package(s) into ${outputRoot}.`);

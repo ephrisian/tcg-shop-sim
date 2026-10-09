@@ -106,6 +106,11 @@ product images are refreshed without changing its existing card records.
 Commit the source package files; generated `public/compiled-set-packages/`
 output is recreated during builds and should not be edited directly.
 
+Each build writes a new catalog build identifier. When the desktop app starts
+after a new build, it clears and rebuilds its IndexedDB catalog from the
+compiled packages and starts a new game from the configured defaults. Ordinary
+relaunches continue to use the current save.
+
 ## Self-test
 
 ```sh
