@@ -17,6 +17,7 @@
     "validate:set": "node scripts/validate-set-package.mjs",
     "author": "node scripts/dev-tool-server.mjs",
     "fetch:art": "node scripts/fetch-set-art.mjs",
+    "fetch:marvel": "node scripts/marvel-tcg-scraper.mjs",
     "export:set": "node scripts/export-set-package.mjs",
     "world:grid": "node developer-tools/world-grid-cli.mjs",
     "preview": "vite preview",

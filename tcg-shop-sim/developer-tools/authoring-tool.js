@@ -390,9 +390,8 @@
       el('p', { className: 'hint', textContent: 'Fetch a Lorcana set and write its JSON and card art directly into developer-tools/set-packages/; the app build validates and compiles them. Players cannot import sets.' }),
     );
     const fetchButton = el('button', { textContent: 'Fetch Lorcast Sets' });
-    const select = el('select');
-    select.setAttribute('aria-label', 'Lorcast set');
-    select.append(el('option', { value: '', textContent: 'Choose a set…' }));
+    const select = el('select', { multiple: true, size: 8 });
+    select.setAttribute('aria-label', 'Lorcast sets');
     selectedRemoteSets.forEach(set => select.append(el('option', {
       value: set.code,
       textContent: `${set.code.toUpperCase()} · ${set.name}`,
@@ -404,7 +403,11 @@
     });
     const message = el('p', { className: importMessageType, textContent: importMessage });
 
-    select.onchange = () => { importButton.disabled = !select.value; };
+    const selectedSets = () => Array.from(select.selectedOptions)
+      .map(option => selectedRemoteSets.find(set => set.code === option.value))
+      .filter(Boolean);
+    const updateImportButton = () => { importButton.disabled = selectedSets().length === 0; };
+    select.onchange = updateImportButton;
     fetchButton.onclick = async () => {
       fetchButton.disabled = true;
       message.className = 'hint';
@@ -416,7 +419,7 @@
         if (!Array.isArray(data.results)) throw new Error('Lorcast returned an unexpected set-list response.');
         selectedRemoteSets = data.results.filter(set => typeof set.code === 'string' && typeof set.name === 'string');
         message.className = 'ok';
-        message.textContent = `Loaded ${selectedRemoteSets.length} set(s). Select one to import.`;
+        message.textContent = `Loaded ${selectedRemoteSets.length} set(s). Select one or more sets to import.`;
         render();
       } catch (error) {
         message.className = 'err';
@@ -425,18 +428,12 @@
         fetchButton.disabled = false;
       }
     };
-    importButton.onclick = async () => {
-      if (!select.value) return;
-      if (!hasServer) { message.className = 'err'; message.textContent = 'Start the author server (npm run author) and open http://localhost:5179/ to import.'; return; }
-      importButton.disabled = true;
-      fetchButton.disabled = true;
-      try {
-        const remoteSet = selectedRemoteSets.find(set => set.code === select.value);
-        if (!remoteSet) throw new Error('The selected set is no longer available. Fetch the set list again.');
+    const importSet = async (remoteSet, position, total) => {
         const code = String(remoteSet.code).toLowerCase();
-        message.className = 'hint';
-        message.textContent = `Fetching cards for ${remoteSet.name}…`;
-        const cards = await fetchLorcastSetCards(code, message);
+        const progressPrefix = total > 1 ? `Set ${position} of ${total} (${remoteSet.name}): ` : '';
+        const setProgress = text => { message.textContent = `${progressPrefix}${text}`; };
+        setProgress('fetching cards…');
+        const cards = await fetchLorcastSetCards(code, setProgress);
         if (cards.length === 0) throw new Error(`Lorcast returned no cards for ${remoteSet.name}.`);
         const cardData = [];
         const values = [];
@@ -464,7 +461,7 @@
           const batch = artworkJobs.slice(start, start + 6);
           const downloaded = await Promise.all(batch.map(async (job, batchIndex) => {
             const progress = Math.min(start + batchIndex + 1, artworkJobs.length);
-            message.textContent = `Downloading artwork ${progress} of ${artworkJobs.length}�`;
+            setProgress(`downloading artwork ${progress} of ${artworkJobs.length}…`);
             const asset = await fetchLorcastArtwork(job.imageUrl);
             return { ...job, asset };
           }));
@@ -510,32 +507,60 @@
         fileName = 'set.json';
         packagingOnly = false;
         packageLoaded = true;
-        showingImporter = false;
         tab = 0;
         currentPath = `${packageFolder}/set.json`;
         await writePackageFile(currentPath, JSON.stringify(packageData, null, 2) + '\n');
-        importMessage = `Imported ${remoteSet.name}: ${cards.length} cards and ${images.length} artwork files written to developer-tools/set-packages/${packageFolder}.`;
-        importMessageType = 'ok';
-        libraryMessage = importMessage;
-        libraryMessageType = 'ok';
-        render();
-      } catch (error) {
-        message.className = 'err';
-        message.textContent = error instanceof Error ? error.message : 'Could not import the selected set.';
-        importButton.disabled = !select.value;
-        fetchButton.disabled = false;
+        return { name: remoteSet.name, cards: cards.length, images: images.length, packageFolder };
+    };
+    importButton.onclick = async () => {
+      const remoteSets = selectedSets();
+      if (remoteSets.length === 0) return;
+      if (!hasServer) { message.className = 'err'; message.textContent = 'Start the author server (npm run author) and open http://localhost:5179/ to import.'; return; }
+      importButton.disabled = true;
+      fetchButton.disabled = true;
+      const completed = [];
+      const failures = [];
+      message.className = 'hint';
+      for (const [index, remoteSet] of remoteSets.entries()) {
+        try {
+          completed.push(await importSet(remoteSet, index + 1, remoteSets.length));
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : 'Unknown import error.';
+          failures.push(`${remoteSet.name}: ${detail}`);
+        }
       }
+      const summary = completed.map(result => `${result.name} (${result.cards} cards, ${result.images} artwork files)`).join('; ');
+      importMessage = completed.length
+        ? `Imported ${completed.length} set(s): ${summary}.`
+        : 'No sets were imported.';
+      if (failures.length) {
+        importMessage += ` Failed: ${failures.join(' ')}`;
+        importMessageType = 'err';
+      } else {
+        importMessageType = 'ok';
+      }
+      libraryMessage = importMessage;
+      libraryMessageType = importMessageType;
+      if (remoteSets.length === 1 && completed.length === 1 && failures.length === 0) {
+        showingImporter = false;
+        render();
+        return;
+      }
+      message.className = importMessageType;
+      message.textContent = importMessage;
+      updateImportButton();
+      fetchButton.disabled = false;
     };
     wrap.append(
       el('div', { className: 'grid' },
         el('label', { textContent: 'Source' }),
         el('span', { textContent: 'Lorcast (Lorcana)' }),
-        el('label', { textContent: 'Set' }),
+        el('label', { textContent: 'Sets' }),
         el('span', {}, select),
         el('label', { textContent: 'Card artwork' }),
         el('label', {}, downloadArtwork, ' Download and include image files'),
       ),
-      el('p', { className: 'hint', textContent: 'Files are written by the local author server to developer-tools/set-packages/lorcana/<set code>/. Re-importing a set overwrites its files.' }),
+      el('p', { className: 'hint', textContent: 'Use Ctrl/Cmd-click or Shift-click to select multiple sets. Files are written sequentially to developer-tools/set-packages/lorcana/<set code>/. Re-importing a set overwrites its files.' }),
       el('p', {}, fetchButton, ' ', importButton),
       message,
       el('hr'),
@@ -571,15 +596,26 @@
         const values = cardData.map(card => ({ cardId: card.id, marketPrice: 0 }));
         const images = [];
         if (downloadArtwork.checked) {
-          for (let start = 0; start < cardData.length; start += 6) {
-            const batch = cardData.slice(start, start + 6).map(async (card, offset) => {
-              const asset = await fetchLorcastArtwork(scraped.cards[start + offset].imageUrl);
-              const imagePath = `${String(start + offset + 1).padStart(4, '0')}-${card.id}.${asset.extension}`;
+          const artworkByUrl = new Map();
+          cardData.forEach((card, index) => {
+            const imageUrl = scraped.cards[index].imageUrl;
+            const parsedImageUrl = new URL(imageUrl);
+            const key = `${parsedImageUrl.origin}${parsedImageUrl.pathname}`;
+            const artwork = artworkByUrl.get(key) || { imageUrl, cards: [] };
+            artwork.cards.push({ card, index });
+            artworkByUrl.set(key, artwork);
+          });
+          const artworkJobs = [...artworkByUrl.values()];
+          for (let start = 0; start < artworkJobs.length; start += 6) {
+            const batch = artworkJobs.slice(start, start + 6).map(async artwork => {
+              const asset = await fetchLorcastArtwork(artwork.imageUrl);
+              const firstCard = artwork.cards[0];
+              const imagePath = `${String(firstCard.index + 1).padStart(4, '0')}-${firstCard.card.id}.${asset.extension}`;
               await writePackageFile(`${packageFolder}/${imagePath}`, asset.blob);
-              images.push({ cardId: card.id, path: imagePath });
+              artwork.cards.forEach(({ card }) => images.push({ cardId: card.id, path: imagePath }));
             });
             await Promise.all(batch);
-            message.textContent = `Downloading artwork ${Math.min(start + 6, cardData.length)} of ${cardData.length}…`;
+            message.textContent = `Downloading artwork ${Math.min(start + 6, artworkJobs.length)} of ${artworkJobs.length} unique image(s)…`;
           }
         }
         const rarities = [...new Set(cardData.map(card => card.rarity))];
@@ -605,7 +641,8 @@
         tab = 0;
         currentPath = `${packageFolder}/set.json`;
         await writePackageFile(currentPath, JSON.stringify(packageData, null, 2) + '\n');
-        importMessage = `Imported ${packageData.set.name}: ${cardData.length} cards and ${images.length} artwork files written to developer-tools/set-packages/${packageFolder}. Review pack slots and values in Products/Value.`;
+        const artworkCount = new Set(images.map(image => image.path)).size;
+        importMessage = `Imported ${packageData.set.name}: ${cardData.length} cards and ${artworkCount} artwork file(s) written to developer-tools/set-packages/${packageFolder}. Review pack slots and values in Products/Value.`;
         importMessageType = 'ok';
         libraryMessage = importMessage;
         libraryMessageType = 'ok';
@@ -628,7 +665,7 @@
     return section;
   }
 
-  async function fetchLorcastSetCards(setCode, progress) {
+  async function fetchLorcastSetCards(setCode, onProgress = () => {}) {
     let nextUrl = new URL(`https://api.lorcast.com/v0/cards/search?q=set:${encodeURIComponent(setCode)}`);
     const cards = [];
     while (nextUrl) {
@@ -640,7 +677,7 @@
       const data = await response.json();
       if (!Array.isArray(data.results)) throw new Error('Lorcast returned an unexpected card-list response.');
       cards.push(...data.results);
-      progress.textContent = `Fetched ${cards.length} card record(s)…`;
+      onProgress(`fetched ${cards.length} card record(s)…`);
       nextUrl = data.has_more && data.next_page ? new URL(data.next_page, nextUrl) : null;
     }
     return cards;

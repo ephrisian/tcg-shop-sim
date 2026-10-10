@@ -14,9 +14,11 @@ downloads. Opening `index.html` as a file only shows a reminder to start it.
 - The landing page is the **Set Package Library**, listing every full package
   in `developer-tools/set-packages/`. Select **Edit Set** to work on one;
   **Save to set-packages** writes the JSON back in place for the next build.
-- **Data Importer** fetches the Lorcast set catalog and writes the selected
-  set's `set.json`, prices, and (optionally) card art to
-  `developer-tools/set-packages/lorcana/<set code>/`. Re-importing overwrites.
+- **Data Importer** fetches the Lorcast set catalog and writes one or more
+  selected sets' `set.json`, prices, and (optionally) card art to
+  `developer-tools/set-packages/lorcana/<set code>/`. Use Ctrl/Cmd-click or
+  Shift-click to select multiple sets; they download sequentially. Re-importing
+  overwrites.
   `npm run fetch:art -- <package folder>` can fetch missing art later.
 - **Card.fun Importer** (same page) takes a `https://card.fun/products/<id>` URL.
   The server opens it in a headless Edge/Chrome (via `playwright-core`), clicks
@@ -24,7 +26,8 @@ downloads. Opening `index.html` as a file only shows a reminder to start it.
   `developer-tools/set-packages/cardfun/<id>/`. Each section title (CR, SSR, …)
   becomes the card rarity; values default to 0 and the default pack/box should
   be reviewed. Art is the 358px thumbnail, as card.fun's signed image links
-  cannot be resized. It needs Edge or Chrome installed.
+  cannot be resized. Cards that share the same image use one downloaded art
+  file. It needs Edge or Chrome installed.
 - **New** starts a new full set package. **Load JSON…** opens a saved
   packaging-only config, or converts a full set package into a packaging-only
   copy. Existing card records, values, and card artwork are never editable in

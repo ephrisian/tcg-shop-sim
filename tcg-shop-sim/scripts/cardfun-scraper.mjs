@@ -1,7 +1,7 @@
 const loadMoreKeywords = ['more', 'view more', '查看更多', '加载更多', '点击加载', '更多'];
 const maxLoadMoreClicks = 300;
 
-async function launchBrowser() {
+export async function launchBrowser() {
   let chromium;
   try {
     ({ chromium } = await import('playwright-core'));
@@ -28,6 +28,11 @@ export function parseCardFunUrl(value) {
   url.search = '';
   url.hash = '';
   return url;
+}
+
+export function cardFunImageKey(value, baseUrl) {
+  const url = new URL(value, baseUrl);
+  return `${url.origin}${url.pathname}`;
 }
 
 // Loads a card.fun product page, expands every "MORE" button, and returns the card list.
@@ -87,19 +92,12 @@ export async function scrapeCardFunSet(rawUrl, onProgress = () => {}) {
       return { title: document.title, cards };
     });
 
-    // Dedupe on the stable path. The signed query must stay untouched: the CDN signature covers it, so stripping it causes 403s.
-    const seen = new Set();
     const cards = [];
     for (const card of result.cards) {
       let imageUrl;
-      let key;
       try {
-        const parsed = new URL(card.imageUrl, url);
-        key = parsed.origin + parsed.pathname;
-        imageUrl = parsed.href;
+        imageUrl = new URL(card.imageUrl, url).href;
       } catch { continue; }
-      if (seen.has(key)) continue;
-      seen.add(key);
       cards.push({ ...card, imageUrl });
     }
     if (cards.length === 0) throw new Error('No cards were found on that page.');
