@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import { DEVELOPER_SETTINGS, GAME_CONFIG } from '../game/config';
 import { useGame } from '../game/state';
 import { getCalculatedCardValue } from '../game/engine';
-import { Plus, BookOpen } from 'lucide-react';
+import { binderSlots, moveInBinder } from '../game/binders';
+import { BookOpen } from 'lucide-react';
 
 export const ScreenCollection = ({ view }: { view: 'collection' | 'binders' }) => {
   const { state, availableSets, dictionary, setState, advanceTime } = useGame();
   const [selectedBinderId, setSelectedBinderId] = useState(state.binders[0]?.id || '');
   const [binderPage, setBinderPage] = useState(0);
   const selectedBinder = state.binders.find(binder => binder.id === selectedBinderId);
+  const [pickedSlot, setPickedSlot] = useState<number | null>(null);
+  const [expandedSetId, setExpandedSetId] = useState<string | null>(null);
+  const [setPage, setSetPage] = useState(0);
+  const slotList = selectedBinder ? binderSlots(selectedBinder) : [];
   const currentStore = GAME_CONFIG.locations[state.currentLocationId as keyof typeof GAME_CONFIG.locations];
   const currentProperty = state.properties.find(property => property.id === state.currentLocationId);
   const atBinderRetailer = currentStore?.type === 'lgs' || currentStore?.type === 'bigbox' ||
@@ -157,36 +162,39 @@ export const ScreenCollection = ({ view }: { view: 'collection' | 'binders' }) =
           </div>
           <div className={`grid grid-cols-2 gap-3 ${selectedBinder.slotsPerPage === 9 ? 'sm:grid-cols-6' : selectedBinder.slotsPerPage === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
             {Array.from({ length: selectedBinder.slotsPerPage * 2 }, (_, pageSlot) => {
-              const cardIndex = binderPage * selectedBinder.slotsPerPage + pageSlot;
-              const instance = selectedBinder.cards[cardIndex];
+              const slotIndex = binderPage * selectedBinder.slotsPerPage + pageSlot;
+              if (slotIndex >= slotList.length) return <div key={slotIndex} />;
+              const instance = slotList[slotIndex];
               const cardData = instance ? dictionary[instance.cardId] : null;
+              const moveTo = (from: number) => setState(prev => ({
+                ...prev,
+                binders: prev.binders.map(binder => binder.id === selectedBinder.id ? moveInBinder(binder, from, slotIndex) : binder),
+              }));
               return (
                 <div
-                  key={cardIndex}
+                  key={slotIndex}
                   onDragOver={event => event.preventDefault()}
                   onDrop={event => {
                     event.preventDefault();
-                    const from = Number(event.dataTransfer.getData('text/binder-card-index'));
-                    if (!Number.isInteger(from) || from < 0 || from >= selectedBinder.cards.length || from === cardIndex) return;
-                    setState(prev => ({
-                      ...prev,
-                      binders: prev.binders.map(binder => {
-                        if (binder.id !== selectedBinder.id) return binder;
-                        const cards = [...binder.cards];
-                        const [moved] = cards.splice(from, 1);
-                        cards.splice(Math.min(cardIndex, cards.length), 0, moved);
-                        return { ...binder, cards };
-                      }),
-                    }));
+                    const from = Number(event.dataTransfer.getData('text/binder-slot'));
+                    if (Number.isInteger(from) && slotList[from]) moveTo(from);
                   }}
-                  className="aspect-[2.5/3.5] rounded-lg border border-dashed border-slate-600 bg-slate-900/60 overflow-hidden flex items-center justify-center"
+                  onClick={() => {
+                    if (pickedSlot === null) {
+                      if (instance) setPickedSlot(slotIndex);
+                    } else {
+                      if (pickedSlot !== slotIndex) moveTo(pickedSlot);
+                      setPickedSlot(null);
+                    }
+                  }}
+                  className={`aspect-[2.5/3.5] rounded-lg border ${pickedSlot === slotIndex ? 'border-solid border-purple-400' : 'border-dashed border-slate-600'} bg-slate-900/60 overflow-hidden flex items-center justify-center cursor-pointer`}
                 >
                   {instance ? (
-                    <button draggable onDragStart={event => event.dataTransfer.setData('text/binder-card-index', String(cardIndex))} className="w-full h-full relative">
+                    <div draggable onDragStart={event => event.dataTransfer.setData('text/binder-slot', String(slotIndex))} className="w-full h-full relative">
                       {cardData?.imageUrl ? <img src={cardData.imageUrl} alt={cardData.name} className="w-full h-full object-contain" /> : <span className="text-xs text-white p-2">{cardData?.name || 'Card'}</span>}
-                      <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[9px] text-white">{cardIndex + 1}</span>
-                    </button>
-                  ) : <span className="text-[10px] text-slate-600">Empty slot</span>}
+                      <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[9px] text-white">{slotIndex + 1}</span>
+                    </div>
+                  ) : <span className="text-[10px] text-slate-600">{pickedSlot !== null ? 'Place here' : `Empty ${slotIndex + 1}`}</span>}
                 </div>
               );
             })}
@@ -216,54 +224,44 @@ export const ScreenCollection = ({ view }: { view: 'collection' | 'binders' }) =
           const perc = estTotalInSet > 0 ? Math.min(100, (uniqueCollected / estTotalInSet) * 100) : 0;
 
           if (collectedInstances.length === 0 && setCards.length === 0) return null;
+          const expanded = expandedSetId === set.id;
+          const pageSize = 60;
+          const pageCount = Math.max(1, Math.ceil(setCards.length / pageSize));
+          const visibleCards = setCards.slice(setPage * pageSize, (setPage + 1) * pageSize);
 
           return (
             <div key={set.id} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden shadow">
-               <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800">
+               <button onClick={() => { setExpandedSetId(expanded ? null : set.id); setSetPage(0); }} className="w-full p-4 flex justify-between items-center bg-slate-800 text-left">
                  <div>
                     <h3 className="font-bold text-white">{set.name}</h3>
-                    <div className="text-xs text-slate-400">{uniqueCollected} / {estTotalInSet || '?'} Unique in binders</div>
+                    <div className="text-xs text-slate-400">{uniqueCollected} / {estTotalInSet || '?'} Unique in binders · {expanded ? 'Hide cards' : 'Show cards'}</div>
                  </div>
-                 {setCards.length > 0 && (
-                   <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-slate-700">
-                     {setCards.map(card => {
-                       const copies = ownedCards.filter(instance => instance.cardId === card.id).length;
-                       return (
-                         <div key={card.id} className="flex items-center gap-2 min-w-0 bg-slate-900/60 rounded p-2">
-                           {card.imageUrl && <img src={card.imageUrl} alt="" className={`w-8 h-11 object-contain rounded ${copies ? '' : 'grayscale opacity-30'}`} />}
-                           <div className="min-w-0"><div className="text-xs truncate text-slate-200">{copies ? card.name : 'Mystery Card'}</div><div className="text-[10px] text-slate-500">{copies ? `${copies} owned` : 'Unowned'}</div></div>
-                         </div>
-                       );
-                     })}
-                   </div>
-                 )}
                  <div className="text-right w-24">
                     <div className="text-xs font-bold text-blue-400 mb-1">{perc.toFixed(1)}%</div>
                     <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden"><div className="h-full bg-blue-500" style={{ width: `${perc}%`}}></div></div>
                  </div>
-               </div>
-               <div className="p-4 flex gap-3 overflow-x-auto custom-scrollbar">
-                 {collectedInstances.slice(0, 15).map((instance: any) => {
-                    const cardData = dictionary[instance.cardId];
-                    if (!cardData) return null;
-                    return (
-                      <div key={instance.instanceId} className="shrink-0 w-20 relative">
-                        <div className={`w-20 h-28 rounded-lg shadow border ${instance.isFoil ? 'border-yellow-400' : 'border-slate-700'} bg-slate-900 overflow-hidden`}>
-                          {cardData.imageUrl ? <img src={cardData.imageUrl} alt={cardData.name} className="w-full h-full object-contain" /> : <div className="p-1 text-[8px] text-white">{cardData.name}</div>}
-                        </div>
-                        {instance.grade && (
-                          <div className={`absolute -bottom-2 -right-2 bg-slate-900 rounded border border-slate-700 px-1.5 py-0.5 text-[10px] font-bold shadow-lg ${(GAME_CONFIG.grading.companies as any)[instance.gradingCompany || '']?.color}`}>{instance.gradingCompany} {instance.grade.toFixed(1)}</div>
-                        )}
-                      </div>
-                    )
-                 })}
-                 {collectedInstances.length > 15 && (
-                    <div className="shrink-0 w-20 h-28 rounded-lg border-2 border-dashed border-slate-700 flex flex-col items-center justify-center text-slate-500 bg-slate-900/50">
-                       <Plus size={16} className="mb-1"/>
-                       <span className="text-[10px] font-bold">+{collectedInstances.length - 15}</span>
-                    </div>
-                 )}
-               </div>
+               </button>
+               {expanded && (
+                 <div className="p-3 border-t border-slate-700">
+                   <div className="flex items-center justify-between mb-2 text-xs text-slate-400">
+                     <button disabled={setPage === 0} onClick={() => setSetPage(setPage - 1)} className="bg-slate-700 text-white disabled:opacity-40 rounded px-2 py-1">Previous</button>
+                     <span>Page {setPage + 1} of {pageCount}</span>
+                     <button disabled={setPage + 1 >= pageCount} onClick={() => setSetPage(setPage + 1)} className="bg-slate-700 text-white disabled:opacity-40 rounded px-2 py-1">Next</button>
+                   </div>
+                   <div className="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-6 gap-2">
+                     {visibleCards.map(card => {
+                       const copies = ownedCards.filter(instance => instance.cardId === card.id).length;
+                       return (
+                         <div key={card.id} className={`aspect-[2.5/3.5] rounded-lg border bg-slate-900 flex flex-col items-center justify-center text-center p-1 ${copies ? 'border-blue-500/60' : 'border-slate-700 opacity-60'}`}>
+                           <div className="text-3xl font-black text-slate-600">?</div>
+                           <div className="text-[10px] text-slate-300 truncate w-full">{copies ? card.name : 'Mystery Card'}</div>
+                           <div className="text-[9px] text-slate-500">{copies ? `${copies} owned` : 'Unowned'}</div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 </div>
+               )}
             </div>
           );
         })}

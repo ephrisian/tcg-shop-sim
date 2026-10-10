@@ -2,7 +2,7 @@ import React from 'react';
 import { GAME_CONFIG } from '../game/config';
 import { useGame } from '../game/state';
 import { gameTimeOfDay } from '../game/time';
-import { Map as MapIcon, Archive, Boxes, PackageOpen, Sun, Zap, Coffee, BookOpen, Library } from 'lucide-react';
+import { Map as MapIcon, Archive, Boxes, PackageOpen, Sun, Zap, Coffee, BookOpen, Library, Swords } from 'lucide-react';
 
 export const Navigation = ({ current, setCurrent }: { current: string, setCurrent: (s: string) => void }) => (
   <nav className={`app-nav fixed bottom-0 left-0 right-0 bg-slate-900 border-t border-slate-800 flex justify-around p-2 pb-safe z-50`}>
@@ -12,6 +12,7 @@ export const Navigation = ({ current, setCurrent }: { current: string, setCurren
     <NavBtn icon={<Boxes />} label="Storage" active={current === 'storage'} onClick={() => setCurrent('storage')} />
     <NavBtn icon={<BookOpen />} label="Collection" active={current === 'collection'} onClick={() => setCurrent('collection')} />
     <NavBtn icon={<Library />} label="Binders" active={current === 'binders'} onClick={() => setCurrent('binders')} />
+    <NavBtn icon={<Swords />} label="Simulator" active={current === 'simulator'} onClick={() => setCurrent('simulator')} />
   </nav>
 );
 
@@ -22,7 +23,7 @@ export const NavBtn = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
-export const TopBar = () => {
+export const TopBar = ({ onMenu }: { onMenu?: () => void }) => {
   const { state, setState } = useGame();
   const clockTime = gameTimeOfDay(state.clockMinutes);
   
@@ -36,8 +37,9 @@ export const TopBar = () => {
   };
 
   return (
-    <div className="bg-slate-900 border-b border-slate-800 p-4 pt-safe flex justify-between items-center sticky top-0 z-40">
+    <div className="app-topbar bg-slate-900 border-b border-slate-800 p-4 pt-safe flex justify-between items-center sticky top-0 z-40">
       <div className="flex items-center space-x-3">
+        {onMenu && <button onClick={onMenu} className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300 hover:bg-slate-700">Menu</button>}
         <div className="flex items-center space-x-1">
           <Sun size={18} className="text-yellow-500" />
           <span className="text-white font-bold text-sm">Day {state.day}</span>

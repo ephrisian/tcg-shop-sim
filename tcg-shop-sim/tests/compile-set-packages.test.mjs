@@ -59,6 +59,21 @@ test('compiles a validated package, referenced card/product art, and catalog man
   assert.equal(existsSync(packageRoot), true);
 });
 
+test('compiles packages whose art is stored as remote URLs without any image files', () => {
+  const { source, output, packageRoot } = fixture();
+  rmSync(join(packageRoot, 'images'), { recursive: true, force: true });
+  const packagePath = join(packageRoot, 'set.json');
+  const data = JSON.parse(readFileSync(packagePath, 'utf8'));
+  data.image = [{ cardId: 'card-1', path: 'https://example.com/cards/1.png?e=1&token=a:b=' }];
+  data.products[0].image = 'https://example.com/products/pack.png';
+  writeFileSync(packagePath, JSON.stringify(data));
+  const result = compile(source, output);
+  assert.equal(result.status, 0, result.stderr);
+  const compiled = JSON.parse(readFileSync(join(output, 'example', 'first-set', 'set.json'), 'utf8'));
+  assert.equal(compiled.image[0].path, data.image[0].path);
+  assert.equal(existsSync(join(output, 'example', 'first-set', 'images')), false);
+});
+
 test('writes an empty manifest when the source package folder is empty', () => {
   const { directory, output } = fixture();
   const source = join(directory, 'empty-source');

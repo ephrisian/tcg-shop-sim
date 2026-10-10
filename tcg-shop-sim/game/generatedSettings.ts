@@ -42,7 +42,8 @@ export const DEVELOPER_SETTINGS = {
     "default_cards_per_pack": 12,
     "default_packs_per_box": 24,
     "default_pack_price": 5.99,
-    "default_box_price": 143.76
+    "default_box_price": 143.76,
+    "default_run_size": 1000
   },
   "storage": {
     "container_drawers": 6,

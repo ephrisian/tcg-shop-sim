@@ -102,8 +102,8 @@
     if (data.credits !== undefined && (!data.credits || typeof data.credits !== 'object')) errors.push('credits must be an object or array.');
     const allowed = ['schemaVersion', 'game', 'set', 'card_data', 'value', 'image', 'products', 'redemptions', 'credits'];
     for (const k of Object.keys(data)) if (!allowed.includes(k)) errors.push(`Unknown top-level property: ${k}`);
-    if (cards.length && !(data.image || []).length) warnings.push('No image associations defined.');
-    if (cards.length && !(data.value || []).length) warnings.push('No value associations defined.');
+    if (cards.length && !cards.some(c => c?.path) && !(data.image || []).length) warnings.push('No image paths defined in card_data.');
+    if (cards.length && !cards.some(c => c?.marketPrice !== undefined) && !(data.value || []).length) warnings.push('No marketPrice values defined in card_data.');
     return { errors, warnings };
   }
 

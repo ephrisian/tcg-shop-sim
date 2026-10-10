@@ -25,13 +25,28 @@ export const loadCompiledPackageManifest = async (): Promise<CompiledPackageMani
   return manifest;
 };
 
-export const installCompiledSetPackages = async (
+let installQueue: Promise<unknown> = Promise.resolve();
+
+// Serialized so concurrent callers (e.g. StrictMode double effects) can't race the import check.
+export const installCompiledSetPackages = (
   suppliedManifest?: CompiledPackageManifest,
+  onProgress?: (done: number, total: number) => void,
+): Promise<void> => {
+  const run = installQueue.then(() => installCompiledSetPackagesUnsafe(suppliedManifest, onProgress));
+  installQueue = run.catch(() => undefined);
+  return run;
+};
+
+const installCompiledSetPackagesUnsafe = async (
+  suppliedManifest?: CompiledPackageManifest,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<void> => {
   const manifest = suppliedManifest || await loadCompiledPackageManifest();
-  const existingSetIds = new Set((await idbGetAll(STORE_SETS)).map(set => set.id));
+  const existingSets = await idbGetAll(STORE_SETS);
+  const existingSetIds = new Set(existingSets.map(set => set.id));
 
-  for (const entry of manifest.packages) {
+  for (const [index, entry] of manifest.packages.entries()) {
+    onProgress?.(index, manifest.packages.length);
     if (!entry || typeof entry.path !== 'string' || entry.path.startsWith('/') ||
       entry.path.split(/[\\/]/).includes('..')) {
       throw new Error('Compiled set catalog contains an invalid package path.');
@@ -44,17 +59,28 @@ export const installCompiledSetPackages = async (
       game: { id: string; providerId?: string };
       set: { id: string; company?: string };
       image?: { path: string }[];
+      card_data?: { path?: string }[];
       products?: { image?: string }[];
     };
     const providerId = packageData.game.providerId || packageData.set.company || 'default';
     const setId = `${encodeURIComponent(packageData.game.id)}:${encodeURIComponent(providerId)}:${encodeURIComponent(packageData.set.id)}`;
-    const alreadyInstalled = existingSetIds.has(setId);
+    const legacySetId = `${encodeURIComponent(packageData.game.id)}:${encodeURIComponent(packageData.set.id)}`;
+    const alreadyInstalled = existingSetIds.has(setId) || existingSets.some(set =>
+      set.id === legacySetId && set.gameId === packageData.game.id &&
+      set.sourceId === packageData.set.id && set.company === packageData.set.company);
     const imageReferences = [
-      ...(alreadyInstalled ? [] : (packageData.image || []).map(image => image.path)),
+      ...(alreadyInstalled ? [] : [
+        ...(packageData.card_data || []).map(card => card.path),
+        ...(packageData.image || []).map(image => image.path),
+      ].filter((path): path is string => typeof path === 'string' && path.length > 0)),
       ...(packageData.products || []).map(product => product.image).filter((path): path is string => Boolean(path)),
     ];
     const imageData: Record<string, string> = {};
     for (const imagePath of imageReferences) {
+      if (/^https:\/\//i.test(imagePath)) {
+        imageData[imagePath] = imagePath;
+        continue;
+      }
       if (imagePath.startsWith('/') || imagePath.split(/[\\/]/).includes('..')) {
         throw new Error(`Compiled set ${entry.path} references an unsafe image path: ${imagePath}`);
       }
@@ -88,4 +114,5 @@ export const installCompiledSetPackages = async (
     await importSetPackage(packageFile, [], imageData);
     existingSetIds.add(setId);
   }
+  onProgress?.(manifest.packages.length, manifest.packages.length);
 };

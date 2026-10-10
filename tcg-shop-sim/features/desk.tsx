@@ -3,6 +3,8 @@ import { DEVELOPER_SETTINGS, GAME_CONFIG } from '../game/config';
 import type { CardData, CardInstance, DeskCard } from '../game/types';
 import { useGame } from '../game/state';
 import { storeDeskPiles } from '../game/inventory';
+import { placeInBinder } from '../game/binders';
+import { BinderPlacer } from '../components/BinderPlacer';
 import { getCalculatedCardValue } from '../game/engine';
 import { Archive, Trash2, X, HeartHandshake, Zap, DollarSign, BookOpen, ShieldCheck } from 'lucide-react';
 
@@ -10,10 +12,11 @@ export const ScreenDesk = () => {
   const { state, setState, dictionary, consumeEnergy, advanceTime } = useGame();
   
   const drawPile = state.desk.filter(c => c.pileIndex === null);
-  const piles = Array.from({ length: 8 }).map((_, i) => state.desk.filter(c => c.pileIndex === i));
+  const piles = Array.from({ length: 6 }).map((_, i) => state.desk.filter(c => c.pileIndex === i));
   const [activeCard, setActiveCard] = useState<DeskCard | null>(null);
   const [showGrading, setShowGrading] = useState(false);
-  const [selectedBinderId, setSelectedBinderId] = useState(state.binders[0]?.id || '');
+  const [showBinderPlacer, setShowBinderPlacer] = useState(false);
+  const nextCard = activeCard ? drawPile.find(card => card.instanceId !== activeCard.instanceId) || null : drawPile[0] || null;
   const localStorage = state.storage.filter(unit => unit.locationId === state.currentLocationId);
   const selectedStorage = localStorage.find(unit => unit.id === state.selectedStorageId) || localStorage[0];
   const [pileTargets, setPileTargets] = useState<Record<number, string>>({});
@@ -44,21 +47,15 @@ export const ScreenDesk = () => {
     showNextCard(activeCard.instanceId);
   };
 
-  const moveToBinder = () => {
+  const moveToBinder = (binderId: string, slot: number) => {
     if (!activeCard) return;
-    const binder = state.binders.find(item => item.id === selectedBinderId && item.cards.length < item.pageCount * item.slotsPerPage);
-    if (!binder) {
-      alert('No binder has an available slot. Purchase or empty a binder before moving this card.');
-      return;
-    }
-    setState(prev => {
-      const { pileIndex, ...cardToBind } = activeCard;
-      return { 
-        ...prev, 
-        binders: prev.binders.map(item => item.id === binder.id ? { ...item, used: true, cards: [...item.cards, cardToBind] } : item),
-        desk: prev.desk.filter(c => c.instanceId !== activeCard.instanceId) 
-      };
-    });
+    const { pileIndex, targetDrawerId, ...cardToBind } = activeCard;
+    setState(prev => ({
+      ...prev,
+      binders: prev.binders.map(item => item.id === binderId ? placeInBinder(item, cardToBind, slot) : item),
+      desk: prev.desk.filter(c => c.instanceId !== activeCard.instanceId),
+    }));
+    setShowBinderPlacer(false);
     advanceTime(DEVELOPER_SETTINGS.time.default_action_minutes);
     showNextCard(activeCard.instanceId);
   };
@@ -135,7 +132,7 @@ export const ScreenDesk = () => {
   };
 
   const MiniCard = ({ cardData, instance }: { cardData: CardData, instance: CardInstance }) => (
-    <div className={`w-16 h-24 rounded shadow-md border ${instance.isFoil ? 'border-yellow-400' : 'border-slate-700'} bg-slate-800 overflow-hidden relative`}>
+    <div className={`w-10 h-14 rounded shadow-md border ${instance.isFoil ? 'border-yellow-400' : 'border-slate-700'} bg-slate-800 overflow-hidden relative`}>
       {cardData?.imageUrl ? <img src={cardData.imageUrl} alt={cardData.name} className="w-full h-full object-contain bg-slate-900" /> : <div className="p-1 text-[8px] text-white break-words">{cardData?.name}</div>}
       {instance.grade && (
         <div className={`absolute top-0 right-0 bg-slate-900/90 text-[10px] font-bold px-1 rounded-bl border-b border-l border-slate-700 ${(GAME_CONFIG.grading.companies as any)[instance.gradingCompany || '']?.color}`}>{instance.grade.toFixed(1)}</div>
@@ -156,22 +153,23 @@ export const ScreenDesk = () => {
   }
 
   return (
-    <div className="desk-screen desk-layout p-4 pb-24 h-[calc(100vh-60px)] flex flex-col relative">
+    <div className="desk-screen desk-layout p-4 pb-24 min-h-[calc(100vh-60px)] flex flex-col relative">
       <div className="desk-header flex justify-between items-center mb-4 shrink-0">
         <h2 className="text-2xl font-bold text-white">The Desk</h2>
-        <div className="text-sm font-medium">
-          <span className={`${state.desk.length > GAME_CONFIG.world.deskCapacity * 0.8 ? 'text-red-400' : 'text-red-400/80'}`}>Capacity: {state.desk.length} / {GAME_CONFIG.world.deskCapacity}</span>
-        </div>
       </div>
 
       <div className="desk-board bg-slate-900/50 rounded-2xl p-4 border border-slate-700 flex flex-col mb-4 shadow-inner relative overflow-hidden flex-shrink-0" style={{ minHeight: '380px' }}>
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-24 h-36 border-2 border-dashed border-slate-700 rounded-lg flex items-center justify-center opacity-30 z-0 pointer-events-none">
-          <span className="text-slate-500 font-bold rotate-[-90deg] tracking-widest uppercase text-sm">Draw Pile</span>
-        </div>
-
         <div className="desk-board-content flex justify-between h-full relative z-10">
           {/* Active Card Area */}
           <div className="desk-card-area flex-1 flex justify-center items-center relative pr-4">
+            {nextCard && (
+              <div className="absolute left-0 top-0 z-20 text-center pointer-events-none">
+                <div className="text-[9px] uppercase font-bold text-slate-500 mb-0.5">Next</div>
+                <div className="w-12 aspect-[2.5/3.5] rounded border border-slate-600 bg-slate-800 overflow-hidden opacity-80">
+                  {dictionary[nextCard.cardId]?.imageUrl && <img src={dictionary[nextCard.cardId].imageUrl} alt="" className="w-full h-full object-contain" />}
+                </div>
+              </div>
+            )}
             {activeCard && activeCardData ? (
                <div className="relative w-56 sm:w-64 aspect-[2.5/3.5] animate-in fade-in zoom-in-95 duration-200">
                   <div className={`w-full h-full rounded-xl shadow-2xl border-4 ${activeCard.isFoil ? 'border-yellow-400' : 'border-slate-700'} bg-slate-800 overflow-hidden relative`}>
@@ -213,18 +211,9 @@ export const ScreenDesk = () => {
                   </button>
                   {activeCardData.marketPrice <= 0 && <div className="text-[9px] leading-tight text-amber-300">Market data missing. Store it for a manual Singles sale price.</div>}
 
-                  <button onClick={moveToBinder} className="bg-purple-700 hover:bg-purple-600 text-white text-xs py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full border border-purple-600">
+                  <button onClick={() => setShowBinderPlacer(true)} className="bg-purple-700 hover:bg-purple-600 text-white text-xs py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full border border-purple-600">
                     <BookOpen size={14} className="mr-1.5"/> Binder
                   </button>
-                  {state.binders.length > 0 && (
-                    <label className="text-[10px] text-slate-300">
-                      Destination
-                      <select value={selectedBinderId} onChange={event => setSelectedBinderId(event.target.value)} className="block w-full bg-slate-900 text-white rounded p-1 mt-1">
-                        {state.binders.map(binder => <option key={binder.id} value={binder.id}>{binder.name} ({binder.cards.length}/{binder.pageCount * binder.slotsPerPage})</option>)}
-                      </select>
-                      <span className="block text-slate-500 mt-1">Copies already in binder: {state.binders.find(binder => binder.id === selectedBinderId)?.cards.filter(card => card.cardId === activeCard.cardId).length || 0}</span>
-                    </label>
-                  )}
 
                   {!activeCard.grade && (
                     <button onClick={() => setShowGrading(true)} className="bg-slate-700 hover:bg-slate-600 text-white text-xs py-2 px-2 rounded-lg shadow-md transition-colors flex items-center justify-center w-full border border-slate-600">
@@ -266,9 +255,9 @@ export const ScreenDesk = () => {
       </div>
 
       {/* Sorting Piles */}
-      <div className="desk-piles flex-1 grid grid-cols-4 gap-2 sm:gap-3 content-start overflow-y-auto custom-scrollbar pr-1 pb-4">
+      <div className="desk-piles grid grid-cols-3 sm:grid-cols-6 gap-2 content-start pr-1 pb-4">
         {piles.map((pile, i) => (
-          <div key={i} onClick={() => moveCard(i)} className={`h-44 sm:h-48 bg-slate-900/80 rounded-xl border-2 ${activeCard ? 'border-blue-500/50 cursor-pointer hover:bg-slate-800 hover:border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'border-slate-800'} flex flex-col items-center p-2 relative transition-all duration-200`}>
+          <div key={i} onClick={() => moveCard(i)} className={`h-32 bg-slate-900/80 rounded-xl border-2 ${activeCard ? 'border-blue-500/50 cursor-pointer hover:bg-slate-800 hover:border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.15)]' : 'border-slate-800'} flex flex-col items-center p-1.5 relative transition-all duration-200`}>
             <div className="text-[10px] text-slate-500 font-bold mb-1 uppercase tracking-widest z-10 bg-slate-900/80 px-2 rounded-full mt-1">Pile {i + 1}</div>
             <select
               aria-label={`Destination drawer for pile ${i + 1}`}
@@ -292,13 +281,25 @@ export const ScreenDesk = () => {
                       </div>
                     );
                  })}
-                 <div className="h-24 w-16 invisible"></div> 
+                 <div className="h-14 w-10 invisible"></div> 
                  <div className="absolute -bottom-2 right-0 sm:right-1 bg-slate-700 text-white text-[11px] font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-slate-800 z-50 shadow-md">{pile.length}</div>
               </div>
             ) : <div className="flex-1 flex items-center justify-center opacity-10"><Archive size={24} /></div>}
           </div>
         ))}
       </div>
+
+      {showBinderPlacer && activeCard && (
+        <BinderPlacer
+          binders={state.binders}
+          card={activeCard}
+          nextCard={nextCard}
+          pileCount={drawPile.length}
+          dictionary={dictionary}
+          onPlace={moveToBinder}
+          onClose={() => setShowBinderPlacer(false)}
+        />
+      )}
 
       {/* Grading Modal */}
       {showGrading && (

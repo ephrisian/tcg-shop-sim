@@ -3,16 +3,18 @@ import { DEVELOPER_SETTINGS, normalizeRarity, GAME_CONFIG } from './config';
 import { idbGetAll, idbGetAllByIndex, STORE_CARDS, STORE_SETS } from './database';
 import type { CardData, CardInstance, ImportedSet, SetProductSlot } from './types';
 import { packProductFor } from './products';
+import { rarityWeight } from './pulls';
+import type { PullPlan } from './types';
 import { rollRedemption } from './redemptions';
 
-export const generatePack = async (setId: string, printRuns: Record<string, number>, productId?: string): Promise<{
+export const generatePack = async (setId: string, printRuns: Record<string, number>, productId?: string, plan?: PullPlan): Promise<{
   pack: CardInstance[];
   runUpdates: Record<string, number>;
   redemption?: { prizeType: 'card' | 'binder'; prizeId: string; tierId: string };
 }> => {
-  const actualSetId = setId;
   const importedSets = await idbGetAll(STORE_SETS) as ImportedSet[];
   const setData = importedSets.find(item => item.id === setId || item.code.toUpperCase() === setId.toUpperCase());
+  const actualSetId = setData?.id ?? setId;
   const product = packProductFor(setData, productId);
   const packSlots: SetProductSlot[] = product.slots || GAME_CONFIG.packConfiguration.slots;
   const pullRates = product.pullRates || GAME_CONFIG.packConfiguration.pullRates;
@@ -38,44 +40,81 @@ export const generatePack = async (setId: string, printRuns: Record<string, numb
       return (GAME_CONFIG.world.printRunBase as any)[norm] || 10000;
   };
 
+  const usedCardIds = new Set<string>();
+  const banned = new Set((plan?.ban || []).map(normalizeRarity));
+
   const pickCard = (allowedRarities: string[], rates: Record<string, number>) => {
-    let selectedRarity = allowedRarities[0];
-    if (allowedRarities.length > 1) {
-      const weights = allowedRarities.map(rarity => Math.max(0, rates[rarity] || 0));
+    const permitted = allowedRarities.filter(rarity => !banned.has(normalizeRarity(rarity)));
+    const options = permitted.length > 0 ? permitted : [];
+    let selectedRarity = options[0];
+    if (options.length > 1) {
+      const weights = options.map(rarity => rarityWeight(rates, rarity));
       const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
       if (totalWeight > 0) {
         let roll = Math.random() * totalWeight;
-        for (let i = 0; i < allowedRarities.length; i += 1) {
+        for (let i = 0; i < options.length; i += 1) {
           roll -= weights[i];
           if (roll <= 0) {
-            selectedRarity = allowedRarities[i];
+            selectedRarity = options[i];
             break;
           }
         }
       } else {
-        selectedRarity = allowedRarities[Math.floor(Math.random() * allowedRarities.length)];
+        selectedRarity = options[Math.floor(Math.random() * options.length)];
       }
     }
-    const pool = cardsByRarity[normalizeRarity(selectedRarity)] || [];
-    const validPool = pool.filter((c: any) => getRemaining(c.id, c.rarity) > 0);
+    const pool = selectedRarity ? cardsByRarity[normalizeRarity(selectedRarity)] || [] : [];
+    const validPool = pool.filter((c: any) => !usedCardIds.has(c.id) && getRemaining(c.id, c.rarity) > 0);
     if (validPool.length > 0) return validPool[Math.floor(Math.random() * validPool.length)];
-    const allAvailable = Object.values(cardsByRarity).flat();
-    if (allAvailable.length > 0) return allAvailable[Math.floor(Math.random() * allAvailable.length)];
+    const fallback = (Object.entries(cardsByRarity) as [string, any[]][])
+      .filter(([rarity]) => !banned.has(rarity))
+      .flatMap(([, cards]) => cards)
+      .filter(card => !usedCardIds.has(card.id));
+    if (fallback.length > 0) return fallback[Math.floor(Math.random() * fallback.length)];
     return null; 
   };
 
-  packSlots.forEach(slot => {
-    for (let i = 0; i < slot.count; i++) {
-      const allowedRarities = Array.isArray(slot.rarity) ? slot.rarity : [slot.rarity];
-      const card = pickCard(allowedRarities, pullRates);
-      if (card) {
-        pack.push({ instanceId: crypto.randomUUID(), cardId: card.id, isFoil: slot.isFoil || false, condition: 1.0 });
-        runUpdates[card.id] = getRemaining(card.id, card.rarity) - 1;
-      }
+  const addToPack = (card: any, isFoil: boolean) => {
+    pack.push({ instanceId: crypto.randomUUID(), cardId: card.id, isFoil, condition: 1.0 });
+    usedCardIds.add(card.id);
+    runUpdates[card.id] = getRemaining(card.id, card.rarity) - 1;
+  };
+
+  // Forced rarities (case hits and box-limited pulls) replace a slot that could hold that rarity.
+  const slotAssignments = packSlots.flatMap(slot => Array.from({ length: slot.count }, () => ({ slot, forced: null as string | null })));
+  for (const rarity of plan?.force || []) {
+    const normalized = normalizeRarity(rarity);
+    const open = slotAssignments.filter(item => !item.forced);
+    const matching = open.filter(item => (Array.isArray(item.slot.rarity) ? item.slot.rarity : [item.slot.rarity]).map(normalizeRarity).includes(normalized));
+    const candidates = matching.length > 0 ? matching : open.filter(item => item.slot.isFoil).concat(open.slice(-1));
+    const target = candidates[Math.floor(Math.random() * candidates.length)];
+    if (target) target.forced = normalized;
+  }
+
+  const slotCards: (any | null)[] = slotAssignments.map(() => null);
+  slotAssignments.forEach((assignment, index) => {
+    if (!assignment.forced) return;
+    const pool = (cardsByRarity[assignment.forced] || []).filter((card: any) => !usedCardIds.has(card.id));
+    if (pool.length === 0) {
+      assignment.forced = null;
+      return;
+    }
+    slotCards[index] = pool[Math.floor(Math.random() * pool.length)];
+    usedCardIds.add(slotCards[index].id);
+  });
+  slotAssignments.forEach((assignment, index) => {
+    if (!slotCards[index]) {
+      const allowedRarities = Array.isArray(assignment.slot.rarity) ? assignment.slot.rarity : [assignment.slot.rarity];
+      slotCards[index] = pickCard(allowedRarities, pullRates);
+      if (slotCards[index]) usedCardIds.add(slotCards[index].id);
     }
   });
+  slotCards.forEach((card, index) => {
+    if (card) addToPack(card, slotAssignments[index].slot.isFoil || false);
+  });
 
-  const redemptionData = setData?.redemptions as Parameters<typeof rollRedemption>[0];
+  const redemptionData = (Array.isArray(setData?.redemptions) ? undefined : setData?.redemptions) as
+    Parameters<typeof rollRedemption>[0];
   const tier = rollRedemption(redemptionData, DEVELOPER_SETTINGS.redemption.packs_per_case);
   const redemption = tier
     ? { prizeType: tier.prizeType, prizeId: tier.prizeId, tierId: tier.id }

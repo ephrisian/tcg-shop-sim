@@ -3,6 +3,7 @@ import { GAME_CONFIG, getSetTheme } from '../game/config';
 import type { CardInstance, GameState, LiveRequest } from '../game/types';
 import { useGame } from '../game/state';
 import { generatePack } from '../game/engine';
+import { planBoxPulls } from '../game/pulls';
 import { DEVELOPER_SETTINGS } from '../game/config';
 import { boxPackProductFor, packProductFor, productsForSet } from '../game/products';
 import { getCalculatedCardValue } from '../game/engine';
@@ -37,6 +38,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
   const { state, setState, availableSets, dictionary, consumeEnergy } = useGame();
   const [showConfig, setShowConfig] = useState(false);
   const [includedBinderIds, setIncludedBinderIds] = useState<string[]>([]);
+  const [includedDrawerIds, setIncludedDrawerIds] = useState<string[]>([]);
   const [includedSealedIds, setIncludedSealedIds] = useState<string[]>([]);
   const sellableSealedAtHome = state.sealed.filter(item => (item.locationId || state.homeLocationId) === state.homeLocationId);
   const getSet = (id: string) => availableSets.find(s => s.id.toUpperCase() === id.toUpperCase() || s.code.toUpperCase() === id.toUpperCase());
@@ -54,19 +56,21 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
       alert('There is not enough sealed-product capacity to open this box. Clear inventory space first.');
       return;
     }
-    if (consumeEnergy(GAME_CONFIG.energy.costs.openBox)) {
-      setState(prev => {
-        const set = getSet(setId);
-        const currentBox = productsForSet(set).find(product => product.id === boxProductId && product.type === 'box');
-        const pack = currentBox ? boxPackProductFor(set, currentBox) : packProductFor(set);
-        const currentBoxItem = prev.sealed.find(s => s.id === boxId);
-        const newSealed = prev.sealed.filter(s => s.id !== boxId);
-        const newPacks = Array.from({ length: currentBox?.packsPerBox || GAME_CONFIG.packConfiguration.packsPerBox }).map(() => ({
-          id: crypto.randomUUID(), type: 'pack' as const, setId, productId: pack.id, locationId: currentBoxItem?.locationId
-        }));
-        return { ...prev, sealed: [...newSealed, ...newPacks] };
-      });
-    }
+    setState(prev => {
+      const set = getSet(setId);
+      const currentBox = productsForSet(set).find(product => product.id === boxProductId && product.type === 'box');
+      const pack = currentBox ? boxPackProductFor(set, currentBox) : packProductFor(set);
+      const currentBoxItem = prev.sealed.find(s => s.id === boxId);
+      if (!currentBoxItem) return prev;
+      const newSealed = prev.sealed.filter(s => s.id !== boxId);
+      const packCount = currentBox?.packsPerBox || GAME_CONFIG.packConfiguration.packsPerBox;
+      const boxPlan = planBoxPulls(set, currentBox, pack, packCount);
+      const newPacks = Array.from({ length: packCount }).map((_, index) => ({
+        id: crypto.randomUUID(), type: 'pack' as const, setId, productId: pack.id, locationId: currentBoxItem.locationId,
+        pullPlan: boxPlan[index],
+      }));
+      return { ...prev, sealed: [...newSealed, ...newPacks] };
+    });
   };
 
   const hasRoomForPack = (packId: string, productId: string | undefined, setId: string) => {
@@ -83,16 +87,13 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
 
   const handleRipPack = (pId: string, setId: string, productId?: string) => {
     if (!hasRoomForPack(pId, productId, setId)) return;
-    const cost = state.liveState.active ? GAME_CONFIG.energy.costs.liveRipPack : GAME_CONFIG.energy.costs.ripPack;
-    if (consumeEnergy(cost)) {
-      onRipPack(pId, setId, productId);
-    }
+    onRipPack(pId, setId, productId);
   };
 
   const generateSinglesRequests = (typeId: string): LiveRequest[] => {
     const isSingles = typeId === 'singles';
     const sources = [
-      ...state.storage.flatMap(unit => unit.slots.map(drawer => ({
+      ...state.storage.flatMap(unit => unit.slots.filter(drawer => includedDrawerIds.includes(drawer.id)).map(drawer => ({
         type: 'storage' as const,
         storageId: unit.id,
         drawerId: drawer.id,
@@ -104,9 +105,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
         cards: binder.cards,
       })),
     ].filter(source => source.cards.some(instance => dictionary[instance.cardId]));
-    const selectedProducts = isSingles
-      ? sellableSealedAtHome.filter(item => includedSealedIds.includes(item.id))
-      : sellableSealedAtHome;
+    const selectedProducts = sellableSealedAtHome.filter(item => includedSealedIds.includes(item.id));
     const productQueueReserve = selectedProducts.length > 0 ? 1 : 0;
     const requests: LiveRequest[] = [];
     for (let attempt = 0; attempt < DEVELOPER_SETTINGS.live.queue_limit * 4 && sources.length > 0 && requests.length < DEVELOPER_SETTINGS.live.queue_limit - productQueueReserve; attempt += 1) {
@@ -191,7 +190,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
     const typeDef = (GAME_CONFIG.liveShows.types as any)[typeId];
     const requests = generateSinglesRequests(typeId);
     if (typeId === 'singles' && requests.length === 0) {
-      alert('Your customer queue would be empty. Add cards to storage drawers, or tick binders or sealed products under "Singles sellable inventory", then try again.');
+      alert('Your customer queue would be empty. Add cards to storage drawers, then tick drawers, binders or sealed products under "Singles sellable inventory", then try again.');
       return;
     }
     if (consumeEnergy(typeDef.cost)) {
@@ -263,7 +262,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
                 <div key={id} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 flex justify-between items-center">
                    <div>
                       <div className="text-sm font-bold text-white">{type.name}</div>
-                      <div className="text-xs text-slate-400">{type.desc} Customer queue is built from {id === 'singles' ? 'the sellable inventory you choose below.' : 'your stored singles and sealed products at home.'}</div>
+                      <div className="text-xs text-slate-400">{type.desc} Customer queue is built from {id === 'singles' ? 'the sellable inventory you choose below.' : 'the drawers and sealed products you choose below.'}</div>
                    </div>
                    <button onClick={() => startLiveShow(id)} className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 px-3 rounded shadow flex items-center shrink-0 ml-2">
                      Go Live <Zap size={10} className="ml-1 mr-0.5 text-yellow-300"/>{type.cost}
@@ -273,7 +272,13 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
              {GAME_CONFIG.liveShows.types.singles && (
                <div className="bg-slate-900/70 rounded-lg border border-slate-700 p-3">
                  <div className="text-sm font-bold text-white">Singles sellable inventory</div>
-                 <div className="text-xs text-slate-400 my-1">Storage drawers are included. Choose any binders to include for this live only.</div>
+                 <div className="text-xs text-slate-400 my-1">Only what you tick here is offered to viewers during this live.</div>
+                 {state.storage.flatMap(unit => unit.slots.map((drawer, index) => (
+                   <label key={drawer.id} className="flex items-center gap-2 text-xs text-slate-300 py-1">
+                     <input type="checkbox" checked={includedDrawerIds.includes(drawer.id)} onChange={event => setIncludedDrawerIds(prev => event.target.checked ? [...prev, drawer.id] : prev.filter(id => id !== drawer.id))} />
+                     Storage drawer {index + 1} ({drawer.cards.length} cards)
+                   </label>
+                 )))}
                  {state.binders.map(binder => (
                    <label key={binder.id} className="flex items-center gap-2 text-xs text-slate-300 py-1">
                      <input type="checkbox" checked={includedBinderIds.includes(binder.id)} onChange={event => setIncludedBinderIds(prev => event.target.checked ? [...prev, binder.id] : prev.filter(id => id !== binder.id))} />
@@ -287,7 +292,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
                    </label>
                  ))}
                  {sellableSealedAtHome.length === 0 && <div className="text-xs text-slate-500">No sealed products are at home to offer.</div>}
-                 <div className="text-[10px] text-slate-500">Stored cards available: {state.storage.reduce((sum, unit) => sum + unit.slots.reduce((n, drawer) => n + drawer.cards.length, 0), 0)}</div>
+                 <div className="text-[10px] text-slate-500">Cards offered: {state.storage.reduce((sum, unit) => sum + unit.slots.filter(drawer => includedDrawerIds.includes(drawer.id)).reduce((n, drawer) => n + drawer.cards.length, 0), 0) + state.binders.filter(binder => includedBinderIds.includes(binder.id)).reduce((n, binder) => n + binder.cards.length, 0)}</div>
                </div>
              )}
           </div>
@@ -298,7 +303,7 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
             <h3 className="text-white font-bold text-lg flex items-center">
               <MonitorPlay size={20} className="mr-2 text-slate-400" /> Live Rip Ship
             </h3>
-            <p className="text-xs text-slate-400">Stream openings. Packs cost 1 ⚡.</p>
+            <p className="text-xs text-slate-400">Stream openings for your viewers.</p>
           </div>
           <button onClick={() => setShowConfig(true)} disabled={state.currentLocationId !== state.homeLocationId} className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white px-4 py-2 rounded-lg font-bold text-sm shadow shrink-0 ml-4">
             Setup Stream
@@ -333,10 +338,10 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
                     ? <img src={boxProduct.imageUrl} alt={boxProduct.name} className="absolute inset-0 w-full h-full object-contain" />
                     : <><div className={`absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-b ${theme.bg}`}></div><span className={`text-2xl opacity-20 absolute ${theme.text}`}>{theme.symbol}</span><Box size={24} className="text-slate-400 z-10" /></>}
                 </div>
-                <div className="text-sm font-bold text-white mb-1 line-clamp-1">{boxProduct?.name || getSetName(b.setId)}</div>
-                <div className="text-xs text-slate-400 mb-3">{getSetName(b.setId)}</div>
+                <div className="text-sm font-bold text-white mb-1 line-clamp-2">{getSetName(b.setId)}</div>
+                <div className="text-xs text-slate-400 mb-3">{boxProduct?.name || 'Booster Box'}</div>
                 <button onClick={() => openBox(b.id, b.setId, b.productId)} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded transition-colors flex items-center justify-center">
-                  Crack Box <Zap size={10} className="ml-1 text-yellow-300"/> <span className="ml-0.5">{GAME_CONFIG.energy.costs.openBox}</span>
+                  Crack Box
                 </button>
               </div>
             );
@@ -352,9 +357,10 @@ export const ScreenSealed = ({ onRipPack }: { onRipPack: (id: string, setId: str
                       ? <img src={packProduct.imageUrl} alt={packProduct.name} className="absolute inset-0 w-full h-full object-contain" />
                       : <><div className="absolute inset-0 bg-white/10" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 15%, 0 25%)'}}></div><span className={`text-2xl font-bold ${theme.text} transform drop-shadow-md mb-1`}>{theme.symbol}</span><span className={`text-[8px] font-bold ${theme.text} uppercase transform -rotate-12 drop-shadow-md tracking-widest text-center leading-tight px-1`}>{setName.split(' ').slice(0, 2).join('\n')}</span></>}
                  </div>
-                 <div className="text-xs text-slate-400 mb-3 line-clamp-1">{packProduct?.name || setName}</div>
+                 <div className="text-sm font-bold text-white mb-1 line-clamp-2">{setName}</div>
+                 <div className="text-xs text-slate-400 mb-3 line-clamp-1">{packProduct?.name || 'Booster Pack'}</div>
                 <button onClick={() => handleRipPack(p.id, p.setId, p.productId)} className={`w-full ${state.liveState.active ? 'bg-red-600 hover:bg-red-500' : 'bg-purple-600 hover:bg-purple-500'} text-white text-xs font-bold py-2 rounded transition-colors flex items-center justify-center`}>
-                  Rip Pack <Zap size={10} className="ml-1 text-yellow-300"/> <span className="ml-0.5">{state.liveState.active ? GAME_CONFIG.energy.costs.liveRipPack : GAME_CONFIG.energy.costs.ripPack}</span>
+                  Rip Pack
                 </button>
               </div>
             );
@@ -662,7 +668,7 @@ export const ScreenPackOpener = ({ packId, setId, productId, onComplete }: { pac
       setError(`Not enough inventory capacity for ${requiredCards} cards. Store or sell cards, move cards to a binder, or buy eligible storage.`);
       return;
     }
-    generatePack(setId, state.printRuns, productId)
+    generatePack(setId, state.printRuns, productId, state.sealed.find(item => item.id === packId)?.pullPlan)
       .then(res => {
         setCards(res.pack);
         setRedemptionPrize(res.redemption);
@@ -791,9 +797,9 @@ export const ScreenPackOpener = ({ packId, setId, productId, onComplete }: { pac
           <button onClick={onComplete} className="text-slate-500 hover:text-white mt-8 px-6 py-2">Cancel</button>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center w-full h-full p-4" onClick={handleNext}>
-          <div className="text-slate-400 text-sm mb-6 font-mono tracking-widest">CARD {currentIndex + 1} OF {cards.length}</div>
-          <div className="relative w-72 h-[26rem] perspective-1000">
+        <div className="flex flex-col items-center justify-center w-full h-full p-2" onClick={handleNext}>
+          <div className="text-slate-400 text-xs mb-2 font-mono tracking-widest">CARD {currentIndex + 1} OF {cards.length}</div>
+          <div className="relative perspective-1000" style={{ width: 'min(calc(100vw - 1rem), calc((100dvh - 10rem) * 5 / 7))', aspectRatio: '5 / 7' }}>
             <div className={`w-full h-full relative transition-all duration-300 transform-style-3d ${isRumbling ? 'animate-rumble' : ''}`} style={{ transform: isFlipping ? 'rotateY(90deg) scale(0.9)' : 'rotateY(0deg) scale(1)' }}>
               {showCardBack ? (
                 <div className="absolute inset-0 bg-blue-900 rounded-2xl border-4 border-slate-700 flex flex-col items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-700 to-blue-950 shadow-inner">
@@ -801,7 +807,7 @@ export const ScreenPackOpener = ({ packId, setId, productId, onComplete }: { pac
                   <div className="text-blue-300/50 font-bold tracking-widest mt-6 uppercase text-lg">TCG</div>
                 </div>
               ) : cardData ? (
-                <div className={`absolute inset-0 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.5)] border-4 ${currentCard.isFoil ? 'border-yellow-400' : 'border-slate-800'} bg-slate-800 flex items-center justify-center relative`}>
+                <div className={`absolute inset-0 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(0,0,0,0.5)] border-2 ${currentCard.isFoil ? 'border-yellow-400' : 'border-slate-800'} bg-slate-800 flex items-center justify-center relative`}>
                   {currentCard.isFoil && <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-tr from-transparent via-white/40 to-transparent animate-shimmer mix-blend-overlay"></div>}
                   {isCurrentUltraRare && !isFlipping && (
                     <div className="absolute -inset-8 pointer-events-none z-50 overflow-visible">
@@ -815,7 +821,7 @@ export const ScreenPackOpener = ({ packId, setId, productId, onComplete }: { pac
               ) : <div className="absolute inset-0 bg-slate-800 rounded-2xl border-4 border-slate-700 animate-pulse"></div>}
             </div>
           </div>
-          <div className="mt-8 text-center min-h-[4rem]">
+          <div className="mt-2 text-center min-h-[3rem]">
             {cardData && (
               <div className="animate-in slide-in-from-bottom-2 fade-in">
                 <div className="text-white font-bold text-xl">{cardData.name}</div>
@@ -826,7 +832,7 @@ export const ScreenPackOpener = ({ packId, setId, productId, onComplete }: { pac
               </div>
             )}
           </div>
-          <div className="absolute bottom-8 text-slate-500 animate-pulse font-bold tracking-widest uppercase text-sm">{currentIndex < cards.length - 1 ? 'Tap to reveal next' : 'Tap to finish'}</div>
+          <div className="absolute bottom-2 text-slate-500 animate-pulse font-bold tracking-widest uppercase text-xs">{currentIndex < cards.length - 1 ? 'Tap to reveal next' : 'Tap to finish'}</div>
         </div>
       )}
     </div>

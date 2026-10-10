@@ -54,6 +54,7 @@
       "package.json"
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "compression": "store",
     "win": {
       "target": [
         "portable",

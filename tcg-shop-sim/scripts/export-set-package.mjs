@@ -18,6 +18,7 @@ if (validation.status !== 0) process.exit(validation.status || 1);
 
 const packageData = JSON.parse(readFileSync(packagePath, 'utf8'));
 const imageReferences = [
+  ...(packageData.card_data || []).filter(card => card.path).map(card => ({ path: card.path, description: `card image ${card.id}` })),
   ...(packageData.image || []).map(image => ({ path: image.path, description: `card image ${image.cardId}` })),
   ...(packageData.products || []).filter(product => product.image).map(product => ({ path: product.image, description: `product image ${product.id}` })),
 ];

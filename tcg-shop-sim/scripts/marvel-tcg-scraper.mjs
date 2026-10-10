@@ -151,13 +151,14 @@ export async function scrapeMarvelTcgCards(rawUrl = defaultUrl, onProgress = () 
   }
 }
 
-// Scrapes every card, then writes set.json and the card images into outDir.
-export async function downloadMarvelTcgCards(rawUrl, outDir, onProgress = () => {}) {
+// Scrapes every card and writes set.json into outDir. Image links are stored as-is (they are signed and
+// expire, so rehost them before release); pass { download: true } to save the image files instead.
+export async function downloadMarvelTcgCards(rawUrl, outDir, onProgress = () => {}, { download = false } = {}) {
   const scraped = await scrapeMarvelTcgCards(rawUrl, onProgress);
   await fs.mkdir(outDir, { recursive: true });
   const cardData = buildCardData(scraped.cards);
 
-  // Cards that share an image file download it once.
+  // Cards that share an image file are only downloaded once.
   const artwork = new Map();
   cardData.forEach((card, index) => {
     const key = marvelImageKey(scraped.cards[index].imageUrl);
@@ -167,7 +168,10 @@ export async function downloadMarvelTcgCards(rawUrl, outDir, onProgress = () => 
 
   const images = [];
   const failures = [];
-  const queue = [...artwork.values()];
+  if (!download) {
+    for (const job of artwork.values()) job.cardIds.forEach(cardId => images.push({ cardId, path: job.imageUrl }));
+  }
+  const queue = download ? [...artwork.values()] : [];
   let done = 0;
   const worker = async () => {
     for (let job = queue.shift(); job; job = queue.shift()) {
@@ -188,13 +192,16 @@ export async function downloadMarvelTcgCards(rawUrl, outDir, onProgress = () => 
   await Promise.all(Array.from({ length: 6 }, worker));
 
   const rarities = [...new Set(cardData.map(card => card.rarity))];
+  const pathByCard = new Map(images.map(image => [image.cardId, image.path]));
   const packageData = {
     schemaVersion: 1,
     game: { id: 'marvel-hero-rush', name: 'Marvel Hero Rush', providerId: 'marvelherorush' },
     set: { id: 'hr', code: 'HR', name: 'Marvel Hero Rush', company: 'Marvel' },
-    card_data: cardData,
-    value: cardData.map(card => ({ cardId: card.id, marketPrice: 0 })),
-    ...(images.length ? { image: images.sort((a, b) => a.path.localeCompare(b.path) || a.cardId.localeCompare(b.cardId)) } : {}),
+    card_data: cardData.map(card => ({
+      ...card,
+      marketPrice: 0,
+      ...(pathByCard.has(card.id) ? { path: pathByCard.get(card.id) } : {}),
+    })),
     products: [
       { id: 'booster-pack', name: 'Booster Pack', type: 'pack', cardsPerPack: 5, slots: [{ rarity: rarities, count: 5 }] },
       { id: 'booster-box', name: 'Booster Box', type: 'box', packsPerBox: 20, packProductId: 'booster-pack' },
@@ -206,10 +213,13 @@ export async function downloadMarvelTcgCards(rawUrl, outDir, onProgress = () => 
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const [url = defaultUrl, outDir = path.join(root, 'developer-tools', 'set-packages', 'marvelherorush', 'hr')] = process.argv.slice(2);
-  downloadMarvelTcgCards(url, path.resolve(outDir), message => console.log(message))
+  const args = process.argv.slice(2);
+  const download = args.includes('--download');
+  const [url = defaultUrl, outDir = path.join(root, 'developer-tools', 'set-packages', 'marvelherorush', 'hr')] =
+    args.filter(arg => !arg.startsWith('--'));
+  downloadMarvelTcgCards(url, path.resolve(outDir), message => console.log(message), { download })
     .then(result => {
-      console.log(`Saved ${result.total} cards (${result.images - result.failures.length}/${result.images} images) from ${result.pages} pages to ${result.outDir}`);
+      console.log(`Saved ${result.total} cards (${download ? `${result.images - result.failures.length}/${result.images} images downloaded` : 'image links stored'}) from ${result.pages} pages to ${result.outDir}`);
       result.failures.forEach(failure => console.error(`Image failed: ${failure}`));
       if (result.failures.length) process.exitCode = 1;
     })

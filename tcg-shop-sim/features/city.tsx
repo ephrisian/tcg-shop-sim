@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GAME_CONFIG, getSetTheme } from '../game/config';
 import { useGame } from '../game/state';
-import { productsForSet } from '../game/products';
+import { productsForSet, runSizeFor } from '../game/products';
 import { DEVELOPER_SETTINGS } from '../game/config';
 import { MINUTES_PER_GAME_DAY } from '../game/time';
 import { districtDistanceInHops } from '../game/world';
@@ -98,7 +98,7 @@ export const ScreenCity = () => {
     const destinationDistrict = GAME_CONFIG.worldMap.districts.find(item => item.id === destinationDistrictId);
     const warehouseDistrict = vendor && GAME_CONFIG.worldMap.districts.find(item => item.id === vendor.warehouseDistrictId);
     if (!vendor || !set || !product || !destinationDistrict || !warehouseDistrict) return;
-    const runSize = set.runSize || product.runSize || 0;
+    const runSize = runSizeFor(set, product);
     const stockKey = `${vendorId}:${setId}:${productId}`;
     const stock = Math.max(0, runSize - (state.vendorOrders[stockKey] || 0));
     if (stock < 1) {
@@ -485,7 +485,7 @@ export const ScreenCity = () => {
             <div className="font-bold text-white mb-2">{vendor.name} <span className="text-[10px] text-slate-500 font-normal">Warehouse: {vendor.warehouseDistrictId}</span></div>
             <div className="space-y-2">
               {availableSets.flatMap(set => productsForSet(set).map(product => {
-                const runSize = set.runSize || product.runSize || 0;
+                const runSize = runSizeFor(set, product);
                 const key = `${vendor.id}:${set.id}:${product.id}`;
                 const stock = Math.max(0, runSize - (state.vendorOrders[key] || 0));
                 const destinationDistrict = deliveryLocationId === 'bedroom'
@@ -511,8 +511,8 @@ export const ScreenCity = () => {
             </div>
           </div>
         ))}
-        {!availableSets.some(set => (set.runSize || 0) > 0 || (set.products || []).some(product => (product.runSize || 0) > 0)) && (
-          <p className="text-xs text-slate-500">No online stock is configured. Import a set package with a runSize to enable vendor orders.</p>
+        {availableSets.length === 0 && (
+          <p className="text-xs text-slate-500">No sets are installed, so no online stock is available.</p>
         )}
       </section>
     </div>

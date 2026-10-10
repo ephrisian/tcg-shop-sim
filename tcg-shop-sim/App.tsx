@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { defaultGameState, GameContext, migrateGameState } from './game/state';
+import { buildStartingState, defaultGameState, GameContext, migrateGameState, seedLgsStock } from './game/state';
+import { createSave, deleteAllSaves, deleteSave, lastSaveId, listSaves, markLastSave, readSave, writeSave } from './game/saves';
+import type { SaveSlotInfo } from './game/saves';
+import { StartScreen } from './components/StartScreen';
 import { idbGetAll, idbResetCatalog, STORE_CARDS, STORE_SETS } from './game/database';
 import { installCompiledSetPackages, loadCompiledPackageManifest } from './game/compiledCatalog';
 import { DEVELOPER_SETTINGS, GAME_CONFIG } from './game/config';
@@ -14,6 +17,7 @@ import { ScreenSealed, ScreenPackOpener } from './features/sealed';
 import { ScreenDesk } from './features/desk';
 import { ScreenStorage } from './features/storage';
 import { ScreenCollection } from './features/collection';
+import { ScreenSimulator } from './features/simulator';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('inventory');
@@ -23,6 +27,9 @@ export default function App() {
   const [availableSets, setAvailableSets] = useState<ImportedSet[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [activeSaveId, setActiveSaveId] = useState<string | null>(null);
+  const [saves, setSaves] = useState<SaveSlotInfo[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -30,25 +37,13 @@ export default function App() {
         const manifest = await loadCompiledPackageManifest();
         if (localStorage.getItem('tcg_sim_build_id') !== manifest.buildId) {
           await idbResetCatalog();
-          localStorage.removeItem('tcg_sim_save');
-          setState(defaultGameState);
+          deleteAllSaves();
           localStorage.setItem('tcg_sim_build_id', manifest.buildId);
-        } else {
-          const saved = localStorage.getItem('tcg_sim_save');
-          if (saved) {
-            try {
-              setState(migrateGameState(JSON.parse(saved)));
-            } catch (error) {
-              localStorage.setItem('tcg_sim_save_backup', saved);
-              const message = error instanceof Error ? error.message : 'Unknown save migration error';
-              setLoadError(`Could not load your saved game. A backup was saved as tcg_sim_save_backup: ${message}`);
-              return;
-            }
-          }
         }
-        await installCompiledSetPackages(manifest);
+        await installCompiledSetPackages(manifest, (done, total) => setLoadProgress(total ? done / total : 1));
         const sets = await idbGetAll(STORE_SETS);
         setAvailableSets(sets);
+        setSaves(listSaves());
         const allCards = await idbGetAll(STORE_CARDS);
         const dict: Record<string, CardData> = {};
         allCards.forEach(c => dict[c.id] = c);
@@ -63,8 +58,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isLoaded) localStorage.setItem('tcg_sim_save', JSON.stringify(state));
-  }, [isLoaded, state]);
+    if (isLoaded && activeSaveId) writeSave(activeSaveId, state);
+  }, [isLoaded, activeSaveId, state]);
+
+  const refreshSaves = () => setSaves(listSaves());
+
+  const startNewGame = () => {
+    const slot = createSave();
+    setState(seedLgsStock(buildStartingState(availableSets), availableSets));
+    setCurrentScreen('inventory');
+    setActiveSaveId(slot.id);
+    refreshSaves();
+  };
+
+  const loadGame = (id: string) => {
+    const saved = readSave(id);
+    try {
+      if (saved === null) throw new Error('The save file is missing.');
+      setState(seedLgsStock(migrateGameState(JSON.parse(saved)), availableSets));
+    } catch (error) {
+      if (saved !== null) localStorage.setItem('tcg_sim_save_backup', saved);
+      const message = error instanceof Error ? error.message : 'Unknown save migration error';
+      setLoadError(`Could not load your saved game. A backup was saved as tcg_sim_save_backup: ${message}`);
+      return;
+    }
+    setLoadError('');
+    markLastSave(id);
+    setCurrentScreen('inventory');
+    setActiveSaveId(id);
+  };
+
+  const removeSave = (id: string) => {
+    deleteSave(id);
+    refreshSaves();
+  };
+
+  const returnToMenu = () => {
+    setActivePackId(null);
+    setActiveSaveId(null);
+    refreshSaves();
+  };
 
   useEffect(() => {
     if (state.shipments.length > 0) {
@@ -168,6 +201,7 @@ export default function App() {
           @media (orientation: landscape) and (min-width: 700px) {
             .app-shell { height: 100dvh; min-height: 0; }
             .app-main { padding-right: 5.5rem; }
+            .app-topbar { padding-right: 6rem; }
             .app-nav { top: 0; right: 0; bottom: 0; left: auto; width: 5rem; flex-direction: column; justify-content: center; gap: .4rem; padding: .5rem; border-top: 0; border-left: 1px solid rgb(30 41 59); }
             .app-nav button { width: 100%; }
             .app-main > .desk-screen { height: calc(100dvh - 72px); min-height: 0; }
@@ -185,11 +219,22 @@ export default function App() {
           }
         `}</style>
         
-        {activePackId ? (
+        {!activeSaveId ? (
+          <StartScreen
+            saves={saves}
+            hasContinue={lastSaveId() !== null}
+            ready={isLoaded}
+            progress={loadProgress}
+            onContinue={() => { const id = lastSaveId(); if (id) loadGame(id); }}
+            onNewGame={startNewGame}
+            onLoad={loadGame}
+            onDelete={removeSave}
+          />
+        ) : activePackId ? (
           <ScreenPackOpener packId={activePackId.id} setId={activePackId.setId} productId={activePackId.productId} onComplete={() => setActivePackId(null)} />
         ) : (
           <div className="app-shell flex flex-col min-h-screen">
-            <TopBar />
+            <TopBar onMenu={returnToMenu} />
             <main className="app-main flex-1 overflow-y-auto">
               {state.exhausted ? (
                 <section className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950 p-6">
@@ -222,6 +267,7 @@ export default function App() {
                   {currentScreen === 'storage' && <ScreenStorage />}
                   {currentScreen === 'collection' && <ScreenCollection view="collection" />}
                   {currentScreen === 'binders' && <ScreenCollection view="binders" />}
+                  {currentScreen === 'simulator' && <ScreenSimulator />}
                 </>
               )}
             </main>

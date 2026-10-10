@@ -47,9 +47,11 @@ for (const packagePath of packageFiles) {
 
   const packageData = JSON.parse(readFileSync(packagePath, 'utf8'));
   for (const image of [
+    ...(packageData.card_data || []).map(card => card.path).filter(Boolean),
     ...(packageData.image || []).map(item => item.path),
     ...(packageData.products || []).map(item => item.image).filter(Boolean),
   ]) {
+    if (/^https:\/\//i.test(image)) continue;
     const normalizedImage = image.replace(/\\/g, '/');
     const sourceImagePath = resolve(packageRoot, normalizedImage);
     const outputImagePath = resolve(dirname(outputPackagePath), normalizedImage);

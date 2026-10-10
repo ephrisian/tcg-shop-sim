@@ -6,6 +6,7 @@ if (!packagePath) {
   process.exit(2);
 }
 
+const isRemoteUrl = value => typeof value === 'string' && /^https:\/\//i.test(value);
 const resolvedPackagePath = resolve(packagePath);
 let data;
 try {
@@ -66,6 +67,23 @@ for (const value of Array.isArray(data.value) ? data.value : []) {
 }
 
 const imageRoot = process.argv[3] ? resolve(process.argv[3]) : dirname(resolvedPackagePath);
+const checkImagePath = (path, owner) => {
+  if (isRemoteUrl(path)) return;
+  if (typeof path !== 'string' || !path || isAbsolute(path) || path.split(/[\\/]/).includes('..')) {
+    errors.push(`Image path must be relative and stay inside its image folder: ${path}`);
+  } else if (!existsSync(resolve(imageRoot, path))) {
+    errors.push(`Referenced image does not exist: ${path} (${owner})`);
+  }
+};
+for (const card of Array.isArray(data.card_data) ? data.card_data : []) {
+  if (card?.marketPrice !== undefined && (!Number.isFinite(card.marketPrice) || card.marketPrice < 0)) errors.push(`Invalid marketPrice for ${card.id}.`);
+  if (card?.path !== undefined) checkImagePath(card.path, card.id);
+}
+const setInfo = data.set || {};
+if (setInfo.caseSize !== undefined && (!Number.isInteger(setInfo.caseSize) || setInfo.caseSize < 1)) errors.push('set.caseSize must be a positive integer.');
+for (const [rarity, rate] of Object.entries(setInfo.caseHitRates || {})) {
+  if (!Number.isFinite(rate) || rate < 0) errors.push(`set.caseHitRates.${rarity} must be a non-negative number.`);
+}
 const imageIds = new Set();
 for (const image of Array.isArray(data.image) ? data.image : []) {
   if (!image || typeof image !== 'object') {
@@ -75,7 +93,9 @@ for (const image of Array.isArray(data.image) ? data.image : []) {
   if (!cardIds.has(image.cardId)) errors.push(`Image data references unknown card ${image.cardId}.`);
   if (imageIds.has(image.cardId)) errors.push(`Duplicate image record for card ${image.cardId}.`);
   imageIds.add(image.cardId);
-  if (typeof image.path !== 'string' || !image.path || isAbsolute(image.path) || image.path.split(/[\\/]/).includes('..')) {
+  if (isRemoteUrl(image.path)) {
+    // Remote art is loaded at runtime; nothing to check on disk.
+  } else if (typeof image.path !== 'string' || !image.path || isAbsolute(image.path) || image.path.split(/[\\/]/).includes('..')) {
     errors.push(`Image path must be relative and stay inside its image folder: ${image.path}`);
   } else if (!existsSync(resolve(imageRoot, image.path))) {
     errors.push(`Referenced image does not exist: ${image.path}`);
@@ -91,7 +111,9 @@ for (const product of products) {
     continue;
   }
   if (!product?.id || !product?.name || !['pack', 'box'].includes(product.type)) errors.push('Each product needs an id, name, and pack/box type.');
-  if (product.image !== undefined && (typeof product.image !== 'string' || !product.image || isAbsolute(product.image) || product.image.split(/[\\/]/).includes('..'))) {
+  if (isRemoteUrl(product.image)) {
+    // Remote art is loaded at runtime; nothing to check on disk.
+  } else if (product.image !== undefined && (typeof product.image !== 'string' || !product.image || isAbsolute(product.image) || product.image.split(/[\\/]/).includes('..'))) {
     errors.push(`Product image path must be relative and stay inside its image folder: ${product.image}`);
   } else if (product.image && !existsSync(resolve(imageRoot, product.image))) {
     errors.push(`Referenced product image does not exist: ${product.image}`);

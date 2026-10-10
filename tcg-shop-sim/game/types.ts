@@ -22,6 +22,8 @@ export interface ImportedSet {
   cardCount?: number;
   schemaVersion?: number;
   runSize?: number;
+  caseSize?: number;
+  caseHitRates?: Record<string, number>;
   products?: SetProduct[];
   redemptions?: unknown;
   credits?: unknown;
@@ -46,9 +48,15 @@ export interface SetProduct {
   runSize?: number;
   slots?: SetProductSlot[];
   pullRates?: Record<string, number>;
+  boxLimits?: Record<string, number>;
 }
 
-export interface CardInstance { instanceId: string; cardId: string; isFoil: boolean; condition: number; grade?: number; gradingCompany?: string; }
+export interface PullPlan {
+  force: string[];
+  ban: string[];
+}
+
+export interface CardInstance { instanceId: string; cardId: string; isFoil: boolean; condition: number; grade?: number; gradingCompany?: string; binderSlot?: number; }
 export interface DeskCard extends CardInstance { pileIndex: number | null; targetDrawerId?: string; }
 
 export interface StorageDrawer {
@@ -125,7 +133,7 @@ export interface GameState {
     requests: LiveRequest[];
     sellableBinderIds: string[];
   };
-  sealed: { id: string; type: 'pack' | 'box'; setId: string; productId?: string; locationId?: string }[];
+  sealed: { id: string; type: 'pack' | 'box'; setId: string; productId?: string; locationId?: string; pullPlan?: PullPlan }[];
   desk: DeskCard[];
   storage: StorageUnit[];
   selectedStorageId: string | null;

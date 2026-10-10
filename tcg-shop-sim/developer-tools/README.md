@@ -15,19 +15,23 @@ downloads. Opening `index.html` as a file only shows a reminder to start it.
   in `developer-tools/set-packages/`. Select **Edit Set** to work on one;
   **Save to set-packages** writes the JSON back in place for the next build.
 - **Data Importer** fetches the Lorcast set catalog and writes one or more
-  selected sets' `set.json`, prices, and (optionally) card art to
-  `developer-tools/set-packages/lorcana/<set code>/`. Use Ctrl/Cmd-click or
+  selected sets' `set.json`, prices, and card art links to
+  `developer-tools/set-packages/lorcana/<set code>/`. Art is stored as image
+  URLs that the game loads at runtime; tick "Download image files" to save the
+  files instead. Use Ctrl/Cmd-click or
   Shift-click to select multiple sets; they download sequentially. Re-importing
   overwrites.
-  `npm run fetch:art -- <package folder>` can fetch missing art later.
+  `npm run fetch:art -- <package folder> [--link]` can fetch missing art later
+  (`--link` stores URLs instead of downloading).
 - **Card.fun Importer** (same page) takes a `https://card.fun/products/<id>` URL.
   The server opens it in a headless Edge/Chrome (via `playwright-core`), clicks
-  every "MORE" button, and writes `set.json` plus card art to
+  every "MORE" button, and writes only `set.json` to
   `developer-tools/set-packages/cardfun/<id>/`. Each section title (CR, SSR, …)
   becomes the card rarity; values default to 0 and the default pack/box should
-  be reviewed. Art is the 358px thumbnail, as card.fun's signed image links
-  cannot be resized. Cards that share the same image use one downloaded art
-  file. It needs Edge or Chrome installed.
+  be reviewed. No images are downloaded: each card stores its image URL. These
+  links are signed and expire after about an hour, so rehost the art and
+  replace the links before release. `npm run fetch:marvel` behaves the same
+  way (add `--download` to save the files). It needs Edge or Chrome installed.
 - **New** starts a new full set package. **Load JSON…** opens a saved
   packaging-only config, or converts a full set package into a packaging-only
   copy. Existing card records, values, and card artwork are never editable in

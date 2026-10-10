@@ -1,4 +1,4 @@
-import { GAME_CONFIG } from './config';
+import { GAME_CONFIG, DEVELOPER_SETTINGS } from './config';
 import type { ImportedSet, SetProduct } from './types';
 
 const defaultProducts: SetProduct[] = [
@@ -9,6 +9,9 @@ const defaultProducts: SetProduct[] = [
 export const productsForSet = (set: ImportedSet | undefined): SetProduct[] => set?.products?.length
   ? set.products
   : defaultProducts;
+
+export const runSizeFor = (set: ImportedSet, product: SetProduct): number =>
+  set.runSize || product.runSize || DEVELOPER_SETTINGS.products.default_run_size;
 
 export const packProductFor = (set: ImportedSet | undefined, productId?: string): SetProduct => {
   const packProducts = productsForSet(set).filter(product => product.type === 'pack');

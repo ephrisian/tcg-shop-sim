@@ -177,7 +177,7 @@
         } }));
     },
     function images() {
-      return el('div', {}, el('p', { className: 'hint', textContent: 'Relative paths only (no .., no absolute), e.g. images/card-001.png. The tool does not read image files; validate them with npm run validate:set.' }),
+      return el('div', {}, el('p', { className: 'hint', textContent: 'Either an https:// image URL (loaded at runtime) or a relative path (no .., no absolute), e.g. images/card-001.png. The tool does not read image files; validate them with npm run validate:set.' }),
         listEditor(arr('image'), [{ key: 'cardId', label: 'Card', ids: true }, { key: 'path', label: 'path', hint: 'images/card-001.png' }], () => ({ cardId: '', path: '' })),
         el('button', { textContent: 'Add images/<id>.png for all cards without one', onclick: () => {
           const have = new Set(arr('image').map(v => v.cardId));
@@ -373,7 +373,8 @@
     const { errors } = validatePackage(pkg);
     if (errors.length > 0) throw new Error(`Set package has ${errors.length} validation issue(s): ${errors.join(' ')}`);
     const folder = currentPath.split('/').slice(0, -1).join('/');
-    const referenced = [...(pkg.products || []).map(p => p.image), ...(pkg.image || []).map(i => i.path)].filter(Boolean);
+    const referenced = [...(pkg.products || []).map(p => p.image), ...(pkg.image || []).map(i => i.path)]
+      .filter(path => path && !/^https:\/\//i.test(path));
     const missing = [];
     for (const path of referenced) {
       const response = await fetch(`/api/exists?path=${encodeURIComponent(`${folder}/${path}`)}`);
@@ -396,7 +397,7 @@
       value: set.code,
       textContent: `${set.code.toUpperCase()} · ${set.name}`,
     })));
-    const downloadArtwork = el('input', { type: 'checkbox', checked: true });
+    const downloadArtwork = el('input', { type: 'checkbox', checked: false });
     const importButton = el('button', {
       textContent: 'Download Selected Set Package',
       disabled: true,
@@ -454,7 +455,10 @@
           values.push({ cardId: card.id, marketPrice: Number.isFinite(marketPrice) && marketPrice >= 0 ? marketPrice : 0 });
           const imageUrl = card.image_uris?.digital?.normal || card.image_uris?.digital?.large ||
             card.image_uris?.normal || card.image_uris?.large;
-          if (downloadArtwork.checked && imageUrl) artworkJobs.push({ cardId: card.id, imageUrl });
+          if (imageUrl) {
+            if (downloadArtwork.checked) artworkJobs.push({ cardId: card.id, imageUrl });
+            else images.push({ cardId: card.id, path: imageUrl });
+          }
         });
         const packageFolder = `lorcana/${code.replace(/[^a-z0-9_-]+/g, '_')}`;
         for (let start = 0; start < artworkJobs.length; start += 6) {
@@ -558,7 +562,7 @@
         el('label', { textContent: 'Sets' }),
         el('span', {}, select),
         el('label', { textContent: 'Card artwork' }),
-        el('label', {}, downloadArtwork, ' Download and include image files'),
+        el('label', {}, downloadArtwork, ' Download image files (unchecked: store each image URL and load it at runtime)'),
       ),
       el('p', { className: 'hint', textContent: 'Use Ctrl/Cmd-click or Shift-click to select multiple sets. Files are written sequentially to developer-tools/set-packages/lorcana/<set code>/. Re-importing a set overwrites its files.' }),
       el('p', {}, fetchButton, ' ', importButton),
@@ -571,18 +575,15 @@
 
   function cardFunImportSection() {
     const section = el('div', {});
-    const urlInput = el('input', { type: 'text', placeholder: 'https://card.fun/products/301', value: 'https://card.fun/products/' });
+    const urlInput = el('textarea', { placeholder: 'https://card.fun/products/301\nhttps://card.fun/products/302', value: 'https://card.fun/products/' });
     urlInput.style.width = '100%';
-    const downloadArtwork = el('input', { type: 'checkbox', checked: true });
+    urlInput.rows = 5;
     const button = el('button', { textContent: 'Import from Card.fun' });
     const message = el('p', { className: 'hint', textContent: '' });
-    button.onclick = async () => {
-      if (!hasServer) { message.className = 'err'; message.textContent = 'Start the author server (npm run author) and open http://localhost:5179/ to import.'; return; }
-      button.disabled = true;
-      try {
-        message.className = 'hint';
-        message.textContent = 'Loading the page in a headless browser and expanding every section (this can take a minute)…';
-        const scrapeResponse = await fetch('/api/cardfun/scrape', { method: 'POST', body: JSON.stringify({ url: urlInput.value.trim() }) });
+    const importOne = async (url, onStatus) => {
+      onStatus('Loading the page in a headless browser and expanding every section (this can take a minute)…');
+      {
+        const scrapeResponse = await fetch('/api/cardfun/scrape', { method: 'POST', body: JSON.stringify({ url }) });
         if (!scrapeResponse.ok) throw new Error(await scrapeResponse.text());
         const scraped = await scrapeResponse.json();
         const code = `CF${scraped.productId}`;
@@ -594,30 +595,8 @@
           type: card.type || '',
         }));
         const values = cardData.map(card => ({ cardId: card.id, marketPrice: 0 }));
-        const images = [];
-        if (downloadArtwork.checked) {
-          const artworkByUrl = new Map();
-          cardData.forEach((card, index) => {
-            const imageUrl = scraped.cards[index].imageUrl;
-            const parsedImageUrl = new URL(imageUrl);
-            const key = `${parsedImageUrl.origin}${parsedImageUrl.pathname}`;
-            const artwork = artworkByUrl.get(key) || { imageUrl, cards: [] };
-            artwork.cards.push({ card, index });
-            artworkByUrl.set(key, artwork);
-          });
-          const artworkJobs = [...artworkByUrl.values()];
-          for (let start = 0; start < artworkJobs.length; start += 6) {
-            const batch = artworkJobs.slice(start, start + 6).map(async artwork => {
-              const asset = await fetchLorcastArtwork(artwork.imageUrl);
-              const firstCard = artwork.cards[0];
-              const imagePath = `${String(firstCard.index + 1).padStart(4, '0')}-${firstCard.card.id}.${asset.extension}`;
-              await writePackageFile(`${packageFolder}/${imagePath}`, asset.blob);
-              artwork.cards.forEach(({ card }) => images.push({ cardId: card.id, path: imagePath }));
-            });
-            await Promise.all(batch);
-            message.textContent = `Downloading artwork ${Math.min(start + 6, artworkJobs.length)} of ${artworkJobs.length} unique image(s)…`;
-          }
-        }
+        // card.fun art links are signed and expire; they are stored as-is until they can be rehosted.
+        const images = cardData.map((card, index) => ({ cardId: card.id, path: scraped.cards[index].imageUrl }));
         const rarities = [...new Set(cardData.map(card => card.rarity))];
         const packageData = {
           schemaVersion: 1,
@@ -625,7 +604,7 @@
           set: { id: code.toLowerCase(), code, name: scraped.title || code, company: 'Card.fun' },
           card_data: cardData,
           value: values,
-          ...(images.length ? { image: images.sort((a, b) => a.path.localeCompare(b.path)) } : {}),
+          ...(images.length ? { image: images } : {}),
           products: [
             { id: 'booster-pack', name: 'Booster Pack', type: 'pack', cardsPerPack: 5, slots: [{ rarity: rarities, count: 5 }] },
             { id: 'booster-box', name: 'Booster Box', type: 'box', packsPerBox: 20, packProductId: 'booster-pack' },
@@ -633,33 +612,51 @@
         };
         const validation = validatePackage(packageData);
         if (validation.errors.length) throw new Error(`Imported package failed validation: ${validation.errors.join(' ')}`);
-        pkg = packageData;
-        fileName = 'set.json';
-        packagingOnly = false;
-        packageLoaded = true;
-        showingImporter = false;
-        tab = 0;
-        currentPath = `${packageFolder}/set.json`;
-        await writePackageFile(currentPath, JSON.stringify(packageData, null, 2) + '\n');
-        const artworkCount = new Set(images.map(image => image.path)).size;
-        importMessage = `Imported ${packageData.set.name}: ${cardData.length} cards and ${artworkCount} artwork file(s) written to developer-tools/set-packages/${packageFolder}. Review pack slots and values in Products/Value.`;
-        importMessageType = 'ok';
-        libraryMessage = importMessage;
-        libraryMessageType = 'ok';
-        render();
-      } catch (error) {
-        message.className = 'err';
-        message.textContent = error instanceof Error ? error.message : 'Could not import from Card.fun.';
-        button.disabled = false;
+        const savedPath = `${packageFolder}/set.json`;
+        await writePackageFile(savedPath, JSON.stringify(packageData, null, 2) + '\n');
+        return { packageData, savedPath, cardCount: cardData.length, imageCount: images.length, packageFolder };
       }
+    };
+    button.onclick = async () => {
+      if (!hasServer) { message.className = 'err'; message.textContent = 'Start the author server (npm run author) and open http://localhost:5179/ to import.'; return; }
+      const urls = [...new Set(urlInput.value.split(/\s+/).map(url => url.trim()).filter(url => /^https?:\/\//.test(url)))];
+      if (!urls.length) { message.className = 'err'; message.textContent = 'Enter at least one card.fun product URL.'; return; }
+      button.disabled = true;
+      const done = [];
+      const failed = [];
+      for (const [index, url] of urls.entries()) {
+        try {
+          done.push(await importOne(url, text => { message.className = 'hint'; message.textContent = `(${index + 1}/${urls.length}) ${url}: ${text}`; }));
+        } catch (error) {
+          failed.push(`${url}: ${error instanceof Error ? error.message : 'Could not import from Card.fun.'}`);
+        }
+      }
+      if (!done.length) {
+        message.className = 'err';
+        message.textContent = failed.join('\n');
+        button.disabled = false;
+        return;
+      }
+      const last = done[done.length - 1];
+      pkg = last.packageData;
+      fileName = 'set.json';
+      packagingOnly = false;
+      packageLoaded = true;
+      showingImporter = false;
+      tab = 0;
+      currentPath = last.savedPath;
+      const summary = done.map(item => `${item.packageData.set.name} (${item.cardCount} cards, ${item.imageCount} image link(s))`).join('; ');
+      importMessage = `Imported ${done.length} set(s) to developer-tools/set-packages/cardfun: ${summary}. Review pack slots and values in Products/Value.${failed.length ? ` Failed: ${failed.join(' | ')}` : ''}`;
+      importMessageType = failed.length ? 'err' : 'ok';
+      libraryMessage = importMessage;
+      libraryMessageType = importMessageType;
+      render();
     };
     section.append(
       el('h2', { textContent: 'Card.fun Importer' }),
-      el('p', { className: 'hint', textContent: 'Enter a card.fun product page. The local server opens it in a headless browser (Edge or Chrome), expands every "MORE" button, and imports each card (rarity = section title) and its art. Artwork is the 358px thumbnail card.fun serves, since its signed image links cannot be resized. Re-importing overwrites.' }),
+      el('p', { className: 'hint', textContent: 'Enter one or more card.fun product pages, one per line (they import one after another). The local server opens each in a headless browser (Edge or Chrome), expands every "MORE" button, and imports each card (rarity = section title). Image files are not downloaded: each card stores its card.fun image link, which is signed and expires after about an hour, so rehost the art and replace the links before release. Re-importing overwrites.' }),
       el('div', { className: 'grid' },
-        el('label', { textContent: 'Product URL' }), urlInput,
-        el('label', { textContent: 'Card artwork' }),
-        el('label', {}, downloadArtwork, ' Download and include image files')),
+        el('label', { textContent: 'Product URLs (one per line)' }), urlInput),
       el('p', {}, button),
       message);
     return section;

@@ -7,13 +7,15 @@ interface SetPackageCard {
   rarity?: string;
   version?: string;
   type?: string;
+  marketPrice?: number;
+  path?: string;
   [key: string]: unknown;
 }
 
 interface SetPackage {
   schemaVersion: number;
   game: { id: string; name: string; providerId?: string };
-  set: { id: string; code: string; name: string; company?: string; runSize?: number };
+  set: { id: string; code: string; name: string; company?: string; runSize?: number; caseSize?: number; caseHitRates?: Record<string, number> };
   card_data: SetPackageCard[];
   value?: { cardId: string; marketPrice?: number; [key: string]: unknown }[];
   image?: { cardId: string; path: string }[];
@@ -108,6 +110,34 @@ const parsePackage = (text: string): SetPackage => {
     if (!knownCardIds.has(image.cardId)) throw new Error(`Image data references unknown card ${image.cardId}.`);
     if (imageIds.has(image.cardId)) throw new Error('Image data must contain at most one record per card ID.');
     imageIds.add(image.cardId);
+  }
+  for (const card of candidate.card_data) {
+    if (card.marketPrice !== undefined && (typeof card.marketPrice !== 'number' || !Number.isFinite(card.marketPrice) || card.marketPrice < 0)) {
+      throw new Error(`Market price for card ${card.id} must be a non-negative number.`);
+    }
+    if (card.path !== undefined && (typeof card.path !== 'string' || !card.path)) {
+      throw new Error(`Image path for card ${card.id} must be a non-empty string.`);
+    }
+  }
+  // Older packages kept prices and image paths in separate top-level arrays; fold them into card_data.
+  const cardsById = new Map(candidate.card_data.map(card => [card.id, card]));
+  for (const value of candidate.value || []) {
+    const card = cardsById.get(value.cardId);
+    if (card && card.marketPrice === undefined && value.marketPrice !== undefined) card.marketPrice = value.marketPrice;
+  }
+  for (const image of candidate.image || []) {
+    const card = cardsById.get(image.cardId);
+    if (card && card.path === undefined) card.path = image.path;
+  }
+  delete candidate.value;
+  delete candidate.image;
+  if (candidate.set.caseSize !== undefined && (!Number.isInteger(candidate.set.caseSize) || candidate.set.caseSize <= 0)) {
+    throw new Error('Set caseSize must be a positive integer.');
+  }
+  for (const [rarity, rate] of Object.entries(candidate.set.caseHitRates || {})) {
+    if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0) {
+      throw new Error(`Case hit rate for ${rarity} must be a non-negative number.`);
+    }
   }
   const rarities = new Set(candidate.card_data.map(card => String(card.rarity || 'Common').toLowerCase()));
   const productIds = new Set<string>();
@@ -232,16 +262,16 @@ export const importSetPackage = async (
     imagesByPath.set(file.name, file);
   }
 
-  const cardValues = new Map((setPackage.value || []).map(value => [value.cardId, value]));
   const cardImages = new Map<string, string>();
-  for (const image of setPackage.image || []) {
-    const imagePath = image.path.replace(/\\/g, '/');
+  for (const card of setPackage.card_data) {
+    if (!card.path) continue;
+    const imagePath = card.path.replace(/\\/g, '/');
     if (preloadedImageData[imagePath]) {
-      cardImages.set(image.cardId, preloadedImageData[imagePath]);
+      cardImages.set(card.id, preloadedImageData[imagePath]);
     } else {
       const file = imagesByPath.get(imagePath);
-      if (!file) throw new Error(`Image file is missing from import: ${image.path}`);
-      cardImages.set(image.cardId, await imageFileToDataUrl(file));
+      if (!file) throw new Error(`Image file is missing from import: ${card.path}`);
+      cardImages.set(card.id, await imageFileToDataUrl(file));
     }
   }
   const productImages = new Map<string, string>();
@@ -258,16 +288,11 @@ export const importSetPackage = async (
   }
 
   const cards: CardData[] = setPackage.card_data.map(card => {
-    const value = cardValues.get(card.id);
     const namespacedId = `${catalogSetId}:${encodeURIComponent(card.id)}`;
-    const price = typeof value?.marketPrice === 'number' ? value.marketPrice : 0;
+    const price = typeof card.marketPrice === 'number' ? card.marketPrice : 0;
     if (!Number.isFinite(price) || price < 0) {
       throw new Error(`Market price for card ${card.id} must be a non-negative number.`);
     }
-    const numericValues: Record<string, number> = {};
-    Object.entries(value || {}).forEach(([key, item]) => {
-      if (key !== 'cardId' && typeof item === 'number' && Number.isFinite(item)) numericValues[key] = item;
-    });
     return {
       id: namespacedId,
       sourceId: card.id,
@@ -280,7 +305,6 @@ export const importSetPackage = async (
       imageUrl: cardImages.get(card.id) || '',
       type: typeof card.type === 'string' ? card.type : undefined,
       cardData: card,
-      value: Object.keys(numericValues).length > 0 ? numericValues : undefined,
     };
   });
   const set: ImportedSet = {
@@ -294,6 +318,8 @@ export const importSetPackage = async (
     providerId,
     cardCount: cards.length,
     runSize: setPackage.set.runSize,
+    caseSize: setPackage.set.caseSize,
+    caseHitRates: setPackage.set.caseHitRates,
     schemaVersion: setPackage.schemaVersion,
     products: (setPackage.products || []).map(product => ({
       ...product,

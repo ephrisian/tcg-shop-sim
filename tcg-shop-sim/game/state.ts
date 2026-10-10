@@ -2,6 +2,7 @@ import React, { createContext, useContext } from 'react';
 import { DEVELOPER_SETTINGS, GAME_CONFIG } from './config';
 import { gameDayForClock, MINUTES_PER_GAME_DAY, MINUTES_PER_GAME_HOUR } from './time';
 import { duplicateCardInstanceIds } from './inventory';
+import { productsForSet } from './products';
 import type { Binder, CardData, GameState, ImportedSet, StorageUnit } from './types';
 
 export const SAVE_VERSION = 2;
@@ -34,11 +35,7 @@ export const defaultGameState: GameState = {
   businessStats: { workers: 0 },
   shopStats: { itemsSold: 0, liveShows: 0, returnBuyers: 0 },
   liveState: { active: false, type: 'standard', viewers: 0, whales: 0, frugal: 0, requests: [], sellableBinderIds: [] },
-  sealed: GAME_CONFIG.startingState.sealedProduct.flatMap(p => 
-    Array.from({ length: p.quantity }).map(() => ({
-      id: crypto.randomUUID(), type: p.type as 'pack'|'box', setId: p.setId, productId: `default-${p.type}`, locationId: 'bedroom'
-    }))
-  ),
+  sealed: [],
   desk: [],
   storage: GAME_CONFIG.startingState.storageUnits.map((typeId, i) =>
     makeStorageUnit(typeId, `storage-${i}`, 'bedroom')
@@ -65,6 +62,46 @@ export const defaultGameState: GameState = {
     'lgs-dragon': { '1': GAME_CONFIG.locations['lgs-dragon'].allocationCases * 6 } 
   },
   marketModifiers: { '1': 1.0 }
+};
+
+// Gives each local game store an allocation of every installed set it has no entry for yet.
+export const seedLgsStock = (state: GameState, sets: ImportedSet[]): GameState => {
+  let changed = false;
+  const lgsStock = { ...state.lgsStock };
+  for (const [storeId, location] of Object.entries(GAME_CONFIG.locations)) {
+    if (location.type !== 'lgs') continue;
+    const stock = { ...(lgsStock[storeId] || {}) };
+    for (const set of sets) {
+      if (stock[set.id] === undefined) {
+        stock[set.id] = (location as any).allocationCases * 6;
+        changed = true;
+      }
+    }
+    lgsStock[storeId] = stock;
+  }
+  return changed ? { ...state, lgsStock } : state;
+};
+
+// A new game starts with one booster box for every installed set and one binder.
+export const buildStartingState = (sets: ImportedSet[]): GameState => {
+  const sealed = sets.flatMap(set => {
+    const box = productsForSet(set).find(product => product.type === 'box');
+    return box
+      ? [{ id: crypto.randomUUID(), type: 'box' as const, setId: set.id, productId: box.id, locationId: 'bedroom' }]
+      : [];
+  });
+  const design = GAME_CONFIG.binders.designs.find(item => item.id === GAME_CONFIG.startingState.startingBinderDesignId);
+  const binders: Binder[] = design ? [{
+    id: crypto.randomUUID(),
+    name: design.name,
+    designId: design.id,
+    pageCount: design.pages,
+    slotsPerPage: design.slotsPerPage,
+    purchasePrice: 0,
+    used: false,
+    cards: [],
+  }] : [];
+  return { ...defaultGameState, sealed, binders };
 };
 
 const migrateLegacyStorage = (units: any[], locationId: string): StorageUnit[] => {

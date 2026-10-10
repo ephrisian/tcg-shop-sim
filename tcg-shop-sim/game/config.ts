@@ -12,10 +12,8 @@ export const normalizeRarity = (r: string) => {
 export const GAME_CONFIG = {
   startingState: {
     currency: DEVELOPER_SETTINGS.game.starting_currency,
-    sealedProduct: [
-      { type: 'box', setId: '1', quantity: 2 },
-      { type: 'pack', setId: '1', quantity: 5 }
-    ],
+    // One booster box per installed set and one binder are added by buildStartingState.
+    startingBinderDesignId: 'classic-25',
     storageUnits: ['basic-300'],
   },
   economy: {
